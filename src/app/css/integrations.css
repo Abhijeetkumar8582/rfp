@@ -1,0 +1,255 @@
+/* Integrations — 3rd party apps (purple + lime theme) */
+
+.integrationPageWrap {
+  width: 100%;
+}
+
+.intPage {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.intHeader {
+  margin-bottom: 28px;
+}
+
+.intTitle {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.intSubtitle {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.intFilters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.intFilterBtn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.intFilterBtn:hover {
+  border-color: var(--brand);
+  color: var(--text);
+}
+
+.intFilterBtnActive {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.intFilterBtnActive:hover {
+  background: var(--brand-tint);
+  color: var(--brand);
+}
+
+/* Section */
+.intSection {
+  margin-bottom: 32px;
+}
+
+.intGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.intCard {
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.intCard:hover {
+  border-color: var(--brand-border);
+  box-shadow: var(--shadow);
+}
+
+.intCardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.intCardIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.intCardMeta {
+  flex: 1;
+  min-width: 0;
+}
+
+.intCardName {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.intCardCategory {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.intStatus {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.intStatusConnected {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+.intStatusDisconnected {
+  background: var(--soft);
+  color: var(--muted);
+}
+
+.intCardDesc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.intCardActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.intBtn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.intBtnPrimary {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.intBtnPrimary:hover:not(:disabled) {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+.intBtnPrimary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.intBtnSecondary {
+  background: var(--soft);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.intBtnSecondary:hover {
+  background: var(--border-light);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.intBtnGhost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.intBtnGhost:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.intEmpty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* CTA block */
+.intCta {
+  margin-top: 40px;
+  padding: 28px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--panel) 0%, rgba(124, 58, 237, 0.06) 100%);
+  border: 1px solid var(--border);
+}
+
+.intCtaInner {
+  max-width: 480px;
+}
+
+.intCtaBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+  background: var(--brand-tint);
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+.intCtaTitle {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.intCtaBody {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.intBtnCta {
+  margin-top: 4px;
+}
