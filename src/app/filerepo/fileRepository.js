@@ -1,8 +1,20 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../components/AppShell";
+import { useAuth } from "../../context/AuthContext";
+import { projects as projectsApi, documents as documentsApi, activity as activityApi, API_BASE, getToken } from "../../lib/api";
 import "../css/filerepository.css";
+
+function logPageView(activityApi, user, resource) {
+  activityApi.create({
+    actor: user?.name || user?.email || "User",
+    event_action: "Page viewed",
+    target_resource: resource,
+    severity: "info",
+    system: "web",
+  }).catch(() => {});
+}
 
 // Semantic clusters — documents are auto-assigned to these by meaning (vector similarity)
 const CLUSTERS = ["All", "Security", "Finance", "Architecture", "Compliance", "Integrations"];
@@ -14,31 +26,30 @@ export const ACCESS_LEVELS = {
   high_security: { id: "high_security", label: "High security", desc: "Name only for answers — no open, no download, no URL shown." },
 };
 
-const SEED_FILES = [
-  { id: "f1", folder: "Documents", name: "companies_demo_export_xlsx", created: "2022-02-02 11:54", modified: "2022-02-12 10:03", cluster: "Finance", accessLevel: "open_for_all" },
-  { id: "f2", folder: "Download Center", name: "sso_security_policy.pdf", created: "2021-10-15 15:14", modified: "2021-12-12 10:20", cluster: "Security", accessLevel: "high_security" },
-  { id: "f3", folder: "Report", name: "system_architecture_diagram.pdf", created: "2022-09-02 14:02", modified: "2021-11-10 11:03", cluster: "Architecture", accessLevel: "team_specific" },
-  { id: "f4", folder: "Other", name: "gdpr_compliance_checklist.xlsx", created: "2021-09-01 11:30", modified: "2022-11-11 10:10", cluster: "Compliance", accessLevel: "high_security" },
-  { id: "f5", folder: "Other", name: "api_integration_spec.xlsx", created: "2021-08-03 11:40", modified: "2022-08-11 12:10", cluster: "Integrations", accessLevel: "open_for_all" },
-];
+function formatDateISO(d) {
+  if (!d) return "—";
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toISOString().slice(0, 16).replace("T", " ");
+}
 
-/**
- * Semantic classifier: infers cluster from filename/content (simulates vector similarity).
- * In production, replace with an API that returns cluster from document embeddings.
- */
-function classifyDocument(filename) {
-  const lower = (filename || "").toLowerCase();
-  const security = /security|sso|auth|policy|audit|firewall|encryption|vpn|access/i;
-  const finance = /budget|cost|invoice|revenue|financial|quote|pricing|companies|export/i;
-  const architecture = /architecture|diagram|system|design|infra|deploy|spec/i;
-  const compliance = /compliance|gdpr|regulatory|legal|soc|iso|certification/i;
-  const integrations = /integration|api|connector|webhook|sdk|plugin/i;
-  if (security.test(lower)) return "Security";
-  if (finance.test(lower)) return "Finance";
-  if (architecture.test(lower)) return "Architecture";
-  if (compliance.test(lower)) return "Compliance";
-  if (integrations.test(lower)) return "Integrations";
-  return "Integrations"; // default
+function docToFile(doc) {
+  const created = formatDateISO(doc.uploaded_at);
+  const modified = doc.ingested_at ? formatDateISO(doc.ingested_at) : created;
+  return {
+    id: String(doc.id),
+    folder: doc.cluster || "Integrations",
+    name: doc.filename,
+    created,
+    modified,
+    cluster: doc.cluster || "Integrations",
+    accessLevel: "open_for_all",
+    documentId: doc.id,
+    doc_title: doc.doc_title ?? null,
+    doc_description: doc.doc_description ?? null,
+    doc_type: doc.doc_type ?? null,
+    tags_json: doc.tags_json ?? null,
+    taxonomy_suggestions_json: doc.taxonomy_suggestions_json ?? null,
+  };
 }
 
 function KebabMenu({ file, onAction }) {
@@ -71,31 +82,29 @@ function KebabMenu({ file, onAction }) {
   );
 }
 
-function formatDate() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/** Generate mock vector chunks for a file (replace with API in production). */
-function getMockChunks(file, count = 12) {
-  const base = `${file.name} — Cluster: ${file.cluster}. Document content: Purpose The purpose of this document is to provide structured information. Scope This outlines the key sections, metadata, and vector chunks used for retrieval. Responsibilities Content is chunked for embedding and similarity search.`;
-  const chunks = [];
-  const words = base.split(/\s+/);
-  const wordsPerChunk = Math.max(20, Math.ceil(words.length / count));
-  for (let i = 0; i < count; i++) {
-    const start = i * wordsPerChunk;
-    const slice = words.slice(start, start + wordsPerChunk).join(" ");
-    const content = slice || `Chunk ${i + 1} placeholder.`;
-    chunks.push({ index: i + 1, content, tokens: Math.min(128, Math.ceil(content.length / 4)) });
-  }
-  return chunks;
-}
-
 const EMBEDDING_MODEL = "Gemini gemini-embedding-001";
 
 function FileDetailView({ file, onClose }) {
   const [detailTab, setDetailTab] = useState("chunks");
-  const chunks = useMemo(() => getMockChunks(file), [file]);
+  const [chunks, setChunks] = useState([]);
+  const [chunksLoading, setChunksLoading] = useState(false);
+  const [chunksError, setChunksError] = useState(null);
+
+  useEffect(() => {
+    if (!file?.documentId || detailTab !== "chunks") return;
+    setChunksLoading(true);
+    setChunksError(null);
+    documentsApi
+      .getChunks(file.documentId)
+      .then((res) => {
+        setChunks(res?.chunks ?? []);
+      })
+      .catch((e) => {
+        setChunksError(e.message || "Failed to load chunks");
+        setChunks([]);
+      })
+      .finally(() => setChunksLoading(false));
+  }, [file?.documentId, detailTab]);
 
   const detailTabs = [
     { id: "meta", label: "METADATA" },
@@ -128,13 +137,52 @@ function FileDetailView({ file, onClose }) {
           {detailTab === "meta" && (
             <div className="frMetaTab">
               <dl className="frMetaList">
-                <dt>Name</dt><dd>{file.name}</dd>
-                <dt>Access</dt><dd><span className={`frAccessTag frAccessTag-${file.accessLevel || "open_for_all"}`}>{ACCESS_LEVELS[file.accessLevel || "open_for_all"]?.label || "Open for all"}</span></dd>
-                <dt>Cluster</dt><dd><span className="frClusterTag">{file.cluster}</span></dd>
-                <dt>Created</dt><dd>{file.created}</dd>
-                <dt>Last modified</dt><dd>{file.modified}</dd>
-                <dt>ID</dt><dd>{file.id}</dd>
+                <dt>Name</dt>
+                <dd>{file.name}</dd>
+                <dt>ID</dt>
+                <dd>{file.id}</dd>
+                <dt>Access</dt>
+                <dd><span className={`frAccessTag frAccessTag-${file.accessLevel || "open_for_all"}`}>{ACCESS_LEVELS[file.accessLevel || "open_for_all"]?.label || "Open for all"}</span></dd>
+                <dt>Cluster</dt>
+                <dd><span className="frClusterTag">{file.cluster}</span></dd>
+                <dt>Created</dt>
+                <dd>{file.created}</dd>
+                <dt>Last modified</dt>
+                <dd>{file.modified}</dd>
               </dl>
+              {(file.doc_title != null && file.doc_title !== "") || (file.doc_description != null && file.doc_description !== "") || (file.doc_type != null && file.doc_type !== "") || (file.tags_json != null && file.tags_json !== "") || (file.taxonomy_suggestions_json != null && file.taxonomy_suggestions_json !== "") ? (
+                <div className="frMetaSection">
+                  <h3 className="frMetaSectionTitle">GPT-generated metadata</h3>
+                  <dl className="frMetaList">
+                    {(file.doc_title != null && file.doc_title !== "") && (<><dt>Title</dt><dd>{file.doc_title}</dd></>)}
+                    {(file.doc_description != null && file.doc_description !== "") && (<><dt>Description</dt><dd>{file.doc_description}</dd></>)}
+                    {(file.doc_type != null && file.doc_type !== "") && (<><dt>Doc type</dt><dd><span className="frClusterTag">{file.doc_type}</span></dd></>)}
+                    {(() => {
+                      try {
+                        const tags = file.tags_json ? JSON.parse(file.tags_json) : null;
+                        if (Array.isArray(tags) && tags.length > 0) return <><dt>Tags</dt><dd><div className="frTagsList">{tags.map((t, i) => <span key={i} className="frTag">{t}</span>)}</div></dd></>;
+                      } catch { return null; }
+                    })()}
+                    {(() => {
+                      try {
+                        const tx = file.taxonomy_suggestions_json ? JSON.parse(file.taxonomy_suggestions_json) : null;
+                        if (!tx || typeof tx !== "object") return null;
+                        const domains = Array.isArray(tx.domains) ? tx.domains : [];
+                        const ruleTypes = Array.isArray(tx.rule_types) ? tx.rule_types : [];
+                        const appliesTo = Array.isArray(tx.applies_to) ? tx.applies_to : [];
+                        if (domains.length === 0 && ruleTypes.length === 0 && appliesTo.length === 0) return null;
+                        return (
+                          <>
+                            {domains.length > 0 && (<><dt>Domains</dt><dd><div className="frTagsList">{domains.map((d, i) => <span key={i} className="frTag frTagTaxonomy">{d}</span>)}</div></dd></>)}
+                            {ruleTypes.length > 0 && (<><dt>Rule types</dt><dd><div className="frTagsList">{ruleTypes.map((r, i) => <span key={i} className="frTag frTagTaxonomy">{r}</span>)}</div></dd></>)}
+                            {appliesTo.length > 0 && (<><dt>Applies to</dt><dd><div className="frTagsList">{appliesTo.map((a, i) => <span key={i} className="frTag frTagTaxonomy">{a}</span>)}</div></dd></>)}
+                          </>
+                        );
+                      } catch { return null; }
+                    })()}
+                  </dl>
+                </div>
+              ) : null}
               {(file.accessLevel === "high_security") && (
                 <p className="frMetaHint">This document is high security. Users can only see the name for answers — no open or download.</p>
               )}
@@ -147,24 +195,38 @@ function FileDetailView({ file, onClose }) {
                 <span className="frChunksCount">{chunks.length} chunks</span>
                 <span className="frChunksModel">{EMBEDDING_MODEL}</span>
               </div>
-              <table className="frChunksTable">
-                <thead>
-                  <tr>
-                    <th className="frChunksColNum">#</th>
-                    <th className="frChunksColContent">Content</th>
-                    <th className="frChunksColTokens">Tokens</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chunks.map((c) => (
-                    <tr key={c.index}>
-                      <td className="frChunksColNum">{c.index}</td>
-                      <td className="frChunksColContent">{c.content}</td>
-                      <td className="frChunksColTokens">{c.tokens}</td>
+              {chunksLoading ? (
+                <div style={{ padding: 24, textAlign: "center", color: "#666" }}>Loading chunks…</div>
+              ) : chunksError ? (
+                <div style={{ padding: 24, textAlign: "center", color: "#c00" }} role="alert">{chunksError}</div>
+              ) : (
+                <table className="frChunksTable">
+                  <thead>
+                    <tr>
+                      <th className="frChunksColNum">#</th>
+                      <th className="frChunksColContent">CONTENT</th>
+                      <th className="frChunksColTokens">TOKENS</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {chunks.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} style={{ padding: 24, textAlign: "center", color: "#666" }}>
+                          No chunks yet. Document may still be processing.
+                        </td>
+                      </tr>
+                    ) : (
+                      chunks.map((c) => (
+                        <tr key={c.index}>
+                          <td className="frChunksColNum">{c.index}</td>
+                          <td className="frChunksColContent">{c.content}</td>
+                          <td className="frChunksColTokens">{c.tokens}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
 
@@ -197,16 +259,130 @@ function FileDetailView({ file, onClose }) {
   );
 }
 
+function AddFileModal({ onClose, onUpload, uploading, progress }) {
+  const fileInputRef = useRef(null);
+  const [visibility, setVisibility] = useState("open_for_all");
+  const [selectedFiles, setSelectedFiles] = useState([]);
+
+  function onBrowseClick() {
+    fileInputRef.current?.click();
+  }
+
+  function onFilesSelected(e) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    setSelectedFiles(files);
+    e.target.value = "";
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFiles(Array.from(e.dataTransfer.files || []));
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function handleUpload() {
+    if (selectedFiles.length === 0) return;
+    onUpload(selectedFiles, visibility);
+  }
+
+  function handleClose() {
+    if (!uploading) {
+      setSelectedFiles([]);
+      onClose();
+    }
+  }
+
+  return (
+    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-label="Add new file">
+      <div className="frAddFilePanel">
+        <div className="frFileDetailHeader">
+          <h2 className="frFileDetailTitle">Add new file</h2>
+          <button type="button" className="frFileDetailClose" onClick={handleClose} aria-label="Close" disabled={uploading}>✕</button>
+        </div>
+
+        <div className="frAddFileBody">
+          <div className="frUploadVisibility">
+            <label className="frSmallLabel" htmlFor="addFileVisibility">Document visibility</label>
+            <p className="frHint">Choose who can open/download and whether the document URL is shown in search answers.</p>
+            <select
+              id="addFileVisibility"
+              className="frVisibilitySelect"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
+            >
+              {Object.values(ACCESS_LEVELS).map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div
+            className="frDropzone"
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            role="button"
+            tabIndex={0}
+            onClick={onBrowseClick}
+          >
+            <div className="frDropIcon">⬆️</div>
+            <div className="frDropText">
+              {selectedFiles.length > 0
+                ? `${selectedFiles.length} file(s) selected`
+                : "Drop your file here or browse"}
+            </div>
+            <div className="frDropSub">Max. file size 25 MB</div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={onFilesSelected}
+              style={{ display: "none" }}
+            />
+          </div>
+
+          {uploading && (
+            <div className="frAddFileProgress">
+              <div className="frStatusTitle">Uploading… {progress}%</div>
+              <div className="frBar">
+                <div className="frBarFill" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="frAddFileFooter">
+          <button type="button" className="frAddFileCancel" onClick={handleClose} disabled={uploading}>
+            Cancel
+          </button>
+          <button type="button" className="frPrimaryBtn" onClick={handleUpload} disabled={selectedFiles.length === 0 || uploading}>
+            <span className="frPlus">＋</span> Upload
+          </button>
+        </div>
+      </div>
+      <div className="frFileDetailBackdrop" onClick={handleClose} aria-hidden="true" />
+    </div>
+  );
+}
+
 export default function FileRepository() {
   const fileInputRef = useRef(null);
+  const { user } = useAuth();
+  const [showAddFileModal, setShowAddFileModal] = useState(false);
 
   const [tab, setTab] = useState("All");
   const [search, setSearch] = useState("");
   const [folderSearch, setFolderSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  // Uploaded files (with auto-assigned cluster); merged with SEED_FILES for display
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
@@ -214,10 +390,47 @@ export default function FileRepository() {
   const [lastAssignedCluster, setLastAssignedCluster] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadAccessLevel, setUploadAccessLevel] = useState("open_for_all");
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
 
   const pageSize = 5;
 
-  const allFiles = useMemo(() => [...SEED_FILES, ...uploadedFiles], [uploadedFiles]);
+  useEffect(() => {
+    logPageView(activityApi, user, "File Repository");
+  }, [user?.name, user?.email]);
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const list = await projectsApi.list();
+      setProjects(list);
+      if (list.length > 0) {
+        setSelectedProjectId((prev) => prev ?? list[0].id);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
+  const fetchDocuments = useCallback(async () => {
+    try {
+      const list = await documentsApi.list(selectedProjectId, 0, 500);
+      setDocuments(list);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchProjects().finally(() => setLoading(false));
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    if (!loading && selectedProjectId != null) {
+      fetchDocuments();
+    }
+  }, [loading, selectedProjectId, fetchDocuments]);
+
+  const allFiles = useMemo(() => documents.map(docToFile), [documents]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -244,47 +457,67 @@ export default function FileRepository() {
     fileInputRef.current?.click();
   }
 
-  function processUpload(files) {
+  async function processUpload(files, accessLevelOverride, onDone) {
     if (!files || files.length === 0) return;
+    const projId = selectedProjectId ?? projects[0]?.id;
+    if (!projId || !user?.id) {
+      setError("Select a project and sign in to upload.");
+      onDone?.();
+      return;
+    }
+    const level = accessLevelOverride ?? uploadAccessLevel;
+    setUploadAccessLevel(level);
     setCompleted(false);
     setLastAssignedCluster(null);
+    setError(null);
     setUploading(true);
-    setProgress(0);
+    setProgress(10);
 
-    let p = 0;
-    const progressTimer = setInterval(() => {
-      p += Math.floor(Math.random() * 12) + 6;
-      if (p >= 100) {
-        clearInterval(progressTimer);
-        setProgress(100);
-        setUploading(false);
-        // Simulate semantic analysis (vector similarity) before assigning cluster
-        setAnalyzing(true);
-        setTimeout(() => {
-          const now = formatDate();
-          const newEntries = Array.from(files).map((file, idx) => {
-            const cluster = classifyDocument(file.name);
-            return {
-              id: `upload-${Date.now()}-${idx}`,
-              folder: cluster,
-              name: file.name,
-              created: now,
-              modified: now,
-              cluster,
-              accessLevel: uploadAccessLevel,
-            };
-          });
-          setUploadedFiles((prev) => [...prev, ...newEntries]);
-          setLastAssignedCluster(
-            newEntries.length === 1 ? newEntries[0].cluster : newEntries.map((e) => e.cluster).join(", ")
-          );
-          setAnalyzing(false);
-          setCompleted(true);
-        }, 800);
-      } else {
-        setProgress(p);
+    try {
+      setAnalyzing(true);
+      const clusters = [];
+      const docIds = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setProgress(10 + Math.round((i / files.length) * 80));
+        const res = await documentsApi.upload(projId, user.id, file);
+        docIds.push(res.id);
+        const doc = await documentsApi.get(res.id);
+        clusters.push(doc.cluster || "Integrations");
       }
-    }, 300);
+      setProgress(100);
+      setLastAssignedCluster(clusters.length === 1 ? clusters[0] : clusters.join(", "));
+      setCompleted(true);
+      for (const id of docIds) {
+        try {
+          await documentsApi.generateMetadata(id);
+        } catch (_) {
+          /* non-blocking; metadata may be generated in background by backend */
+        }
+      }
+      fetchDocuments();
+      for (let i = 0; i < files.length; i++) {
+        try {
+          await activityApi.create({
+            actor: user?.name || user?.email || "User",
+            event_action: "File uploaded",
+            target_resource: files[i]?.name ? String(files[i].name) : "Document",
+            severity: "info",
+            system: "web",
+          });
+        } catch {
+          /* non-blocking */
+        }
+      }
+      onDone?.();
+    } catch (e) {
+      setError(e.message || "Upload failed");
+      onDone?.();
+    } finally {
+      setUploading(false);
+      setAnalyzing(false);
+      setProgress(0);
+    }
   }
 
   function onFilesSelected(e) {
@@ -311,10 +544,31 @@ export default function FileRepository() {
       {selectedFile && (
         <FileDetailView file={selectedFile} onClose={() => setSelectedFile(null)} />
       )}
+      {error && (
+        <div className="frError" role="alert" style={{ padding: 12, background: "#fee", color: "#c00", marginBottom: 16, borderRadius: 8 }}>
+          {error}
+        </div>
+      )}
+      {showAddFileModal && (
+        <AddFileModal
+          onClose={() => setShowAddFileModal(false)}
+          onUpload={(files, accessLevel) => processUpload(files, accessLevel, () => setShowAddFileModal(false))}
+          uploading={uploading}
+          progress={progress}
+        />
+      )}
+
       {/* Header */}
       <div className="frHeader">
-        <h1 className="frTitle">Repository</h1>
-        <p className="frSubtitle">Semantic clusters — documents auto-assigned by meaning</p>
+        <div className="frHeaderTop">
+          <div>
+            <h1 className="frTitle">Repository</h1>
+            <p className="frSubtitle">Semantic clusters — documents auto-assigned by meaning</p>
+          </div>
+          <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
+            <span className="frPlus">＋</span> Add new file
+          </button>
+        </div>
 
         <div className="frTabs">
           {CLUSTERS.map((t) => (
@@ -409,7 +663,12 @@ export default function FileRepository() {
           </thead>
 
           <tbody>
-            {pageItems.map((r) => (
+            {loading ? (
+              <tr><td colSpan={6} style={{ padding: 24, textAlign: "center" }}>Loading documents…</td></tr>
+            ) : pageItems.length === 0 ? (
+              <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#666" }}>No documents yet. Upload a file below.</td></tr>
+            ) : (
+            pageItems.map((r) => (
               <tr key={r.id}>
                 <td className="cellMuted"><span className="frClusterTag">{r.cluster}</span></td>
                 <td>
@@ -429,10 +688,45 @@ export default function FileRepository() {
                   </span>
                 </td>
                 <td className="cellMenu">
-                  <KebabMenu file={r} onAction={(a) => console.log(a, r.id)} />
+                  <KebabMenu
+                  file={r}
+                  onAction={async (action) => {
+                    if (action === "open") {
+                      setSelectedFile(r);
+                      try {
+                        await activityApi.create({
+                          actor: user?.name || user?.email || "User",
+                          event_action: "Document viewed",
+                          target_resource: r.name || String(r.id),
+                          severity: "info",
+                          system: "web",
+                        });
+                      } catch {
+                        /* non-blocking */
+                      }
+                    } else if (action === "download") {
+                      try {
+                        const url = `${API_BASE}/api/v1/documents/${r.documentId}/download`;
+                        const token = getToken();
+                        const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+                        if (res.ok) {
+                          const blob = await res.blob();
+                          const a = document.createElement("a");
+                          a.href = URL.createObjectURL(blob);
+                          a.download = r.name || "download";
+                          a.click();
+                          URL.revokeObjectURL(a.href);
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                    }
+                  }}
+                />
                 </td>
               </tr>
-            ))}
+            ))
+            )}
           </tbody>
         </table>
 
@@ -460,107 +754,6 @@ export default function FileRepository() {
               ›
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Upload section — cluster is auto-assigned by semantic analysis */}
-      <div className="frUploadSection">
-        <h2 className="frUploadTitle">Add file to repository</h2>
-        <p className="frUploadHint">Documents are automatically assigned to a cluster (Security, Finance, Architecture, Compliance, Integrations) by semantic analysis.</p>
-
-        <div className="frUploadVisibility">
-          <span className="frSmallLabel">Document visibility</span>
-          <p className="frHint">Choose who can open/download and whether the document URL is shown in search answers.</p>
-          <div className="frVisibilityOptions">
-            {Object.values(ACCESS_LEVELS).map((opt) => (
-              <label key={opt.id} className={`frVisibilityOption ${uploadAccessLevel === opt.id ? "frVisibilityOptionActive" : ""}`}>
-                <input
-                  type="radio"
-                  name="uploadAccessLevel"
-                  value={opt.id}
-                  checked={uploadAccessLevel === opt.id}
-                  onChange={() => setUploadAccessLevel(opt.id)}
-                />
-                <span className="frVisibilityLabel">{opt.label}</span>
-                <span className="frVisibilityDesc">{opt.desc}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="frUploadGrid">
-          {/* Dropzone */}
-          <div
-            className="frDropzone"
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            role="button"
-            tabIndex={0}
-            onClick={onBrowseClick}
-          >
-            <div className="frDropIcon">⬆️</div>
-            <div className="frDropText">
-              Drop your file here or <span className="frLink">browse</span>
-            </div>
-            <div className="frDropSub">Max. file size 25 MB</div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={onFilesSelected}
-              style={{ display: "none" }}
-            />
-          </div>
-
-          {/* Status cards */}
-          <div className="frStatusCol">
-            <div className={`frStatusCard ${uploading || analyzing ? "active" : ""}`}>
-              <div className="frStatusTop">
-                <div>
-                  <div className="frStatusTitle">
-                    {analyzing ? "Analyzing document…" : uploading ? "Uploading…" : "—"}
-                  </div>
-                  <div className="frStatusSub">
-                    {analyzing ? "Assigning cluster by meaning" : uploading ? `${progress}%` : "—"}
-                  </div>
-                </div>
-                <button
-                  className="frStatusClose"
-                  onClick={() => {
-                    setUploading(false);
-                    setAnalyzing(false);
-                    setProgress(0);
-                    setCompleted(false);
-                  }}
-                  aria-label="cancel"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="frBar">
-                <div className="frBarFill" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-
-            <div className={`frStatusCard ${completed ? "success" : ""}`}>
-              <div className="frStatusTop">
-                <div className="frStatusTitle">Completed!</div>
-                <div className="frStatusSub">
-                  {completed
-                    ? (lastAssignedCluster
-                      ? `Assigned to: ${lastAssignedCluster}`
-                      : "File uploaded successfully")
-                    : "—"}
-                </div>
-                <div className="frStatusCheck">✓</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="frDoneRow">
-          <button className="frDoneBtn">Done!</button>
         </div>
       </div>
     </div>

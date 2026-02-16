@@ -1,5 +1,9 @@
-import React from "react";
+"use client";
+
+import React, { useEffect } from "react";
 import AppShell from "../components/AppShell";
+import { useAuth } from "../../context/AuthContext";
+import { activity as activityApi } from "../../lib/api";
 import "../css/project.css";
 
 // Mock data for AI platform sections
@@ -31,6 +35,17 @@ const lowConfidenceAreas = [
 ];
 
 export default function IntelligenceHub() {
+  const { user } = useAuth();
+  useEffect(() => {
+    activityApi.create({
+      actor: user?.name || user?.email || "User",
+      event_action: "Page viewed",
+      target_resource: "Intelligence Hub",
+      severity: "info",
+      system: "web",
+    }).catch(() => {});
+  }, [user?.name, user?.email]);
+
   return (
     <AppShell mainClassName="pmMain">
       {/* Header */}

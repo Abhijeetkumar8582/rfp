@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { activity as activityApi } from "../../lib/api";
 import "../css/SearchSection.css";
 
 const SAMPLE_RESPONSES = [
@@ -136,11 +138,23 @@ function IconChevronRight() {
 }
 
 export default function SearchSection() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [responses] = useState(SAMPLE_RESPONSES);
   const [versionIndex, setVersionIndex] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
+  const [language, setLanguage] = useState("en");
+  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
+
+  const languages = [
+    { code: "en", label: "English" },
+    { code: "es", label: "Español" },
+    { code: "fr", label: "Français" },
+    { code: "de", label: "Deutsch" },
+    { code: "hi", label: "हिन्दी" },
+  ];
+  const currentLanguageLabel = languages.find((l) => l.code === language)?.label ?? "English";
 
   const current = responses[versionIndex];
   const canPrev = versionIndex > 0;
@@ -153,6 +167,13 @@ export default function SearchSection() {
     setSubmittedQuery(q);
     setHasSearched(true);
     setVersionIndex(0);
+    activityApi.create({
+      actor: user?.name || user?.email || "User",
+      event_action: "Search query",
+      target_resource: q.length > 200 ? q.slice(0, 200) + "…" : q,
+      severity: "info",
+      system: "web",
+    }).catch(() => {});
   }
 
   function handleCopy() {
@@ -162,6 +183,47 @@ export default function SearchSection() {
 
   return (
     <div className="searchPageBard">
+      {/* Top header: bot name + language selector */}
+      <header className="searchPageTopHeader">
+        <h1 className="searchPageBotName">RFP Assistant</h1>
+        <div className="searchPageLangWrap">
+          <button
+            type="button"
+            className="searchPageLangTrigger"
+            onClick={() => setLanguageDropdownOpen((o) => !o)}
+            aria-expanded={languageDropdownOpen}
+            aria-haspopup="listbox"
+            aria-label="Select language"
+          >
+            <span className="searchPageLangLabel">{currentLanguageLabel}</span>
+            <svg className="searchPageLangChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {languageDropdownOpen && (
+            <>
+              <div className="searchPageLangBackdrop" onClick={() => setLanguageDropdownOpen(false)} aria-hidden="true" />
+              <ul className="searchPageLangDropdown" role="listbox">
+                {languages.map(({ code, label }) => (
+                  <li key={code} role="option" aria-selected={language === code}>
+                    <button
+                      type="button"
+                      className={`searchPageLangOption ${language === code ? "searchPageLangOptionActive" : ""}`}
+                      onClick={() => {
+                        setLanguage(code);
+                        setLanguageDropdownOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </header>
+
       <div className="searchPageBardContent">
         {/* Header: user query (shown after search) */}
         {hasSearched && submittedQuery && (

@@ -1,12 +1,33 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import "../css/auth.css";
 
-export const metadata = {
-  title: "Sign in",
-  description: "Sign in to your account",
-};
-
 export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-container">
@@ -18,7 +39,12 @@ export default function LoginPage() {
             Enter your account details below to continue
           </p>
 
-          <form className="auth-form" action="#" method="post">
+          <form className="auth-form" onSubmit={handleSubmit}>
+            {error && (
+              <div className="auth-error" role="alert" style={{ color: "#c00", marginBottom: 12 }}>
+                {error}
+              </div>
+            )}
             <div>
               <label htmlFor="email">Email</label>
               <input
@@ -27,6 +53,8 @@ export default function LoginPage() {
                 name="email"
                 placeholder="Email"
                 autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
@@ -38,6 +66,8 @@ export default function LoginPage() {
                 name="password"
                 placeholder="Password"
                 autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
@@ -52,9 +82,9 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <Link href="/dashboard" className="auth-btn-primary" style={{ display: "inline-block", textAlign: "center", textDecoration: "none" }}>
-              Sign in
-            </Link>
+            <button type="submit" className="auth-btn-primary" disabled={loading}>
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
             <button type="button" className="auth-btn-secondary">
               Sign in with one-time code
             </button>

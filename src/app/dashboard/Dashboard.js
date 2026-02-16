@@ -1,6 +1,8 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import AppShell from "../components/AppShell";
+import { useAuth } from "../../context/AuthContext";
+import { activity as activityApi } from "../../lib/api";
 import "../css/dashboard.css";
 
 const statsTabs = [
@@ -75,6 +77,17 @@ const tableRows = [
 ];
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  useEffect(() => {
+    activityApi.create({
+      actor: user?.name || user?.email || "User",
+      event_action: "Page viewed",
+      target_resource: "Dashboard",
+      severity: "info",
+      system: "web",
+    }).catch(() => {});
+  }, [user?.name, user?.email]);
+
   return (
     <AppShell>
       <>

@@ -1,12 +1,40 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import "../css/auth.css";
 
-export const metadata = {
-  title: "Sign up",
-  description: "Create a new account",
-};
-
 export default function SignupPage() {
+  const router = useRouter();
+  const { register, login } = useAuth();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setLoading(true);
+    try {
+      await register(email, name, password);
+      await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err.message || "Sign up failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-container">
@@ -18,7 +46,12 @@ export default function SignupPage() {
             Enter your details below to get started
           </p>
 
-          <form className="auth-form" action="#" method="post">
+          <form className="auth-form" onSubmit={handleSubmit}>
+            {error && (
+              <div className="auth-error" role="alert" style={{ color: "#c00", marginBottom: 12 }}>
+                {error}
+              </div>
+            )}
             <div>
               <label htmlFor="name">Full name</label>
               <input
@@ -27,6 +60,8 @@ export default function SignupPage() {
                 name="name"
                 placeholder="Full name"
                 autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>
@@ -38,6 +73,8 @@ export default function SignupPage() {
                 name="email"
                 placeholder="Email"
                 autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
@@ -49,6 +86,8 @@ export default function SignupPage() {
                 name="password"
                 placeholder="Password"
                 autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
@@ -60,12 +99,14 @@ export default function SignupPage() {
                 name="confirmPassword"
                 placeholder="Confirm password"
                 autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
               />
             </div>
 
-            <button type="submit" className="auth-btn-primary">
-              Sign up
+            <button type="submit" className="auth-btn-primary" disabled={loading}>
+              {loading ? "Creating account…" : "Sign up"}
             </button>
           </form>
 

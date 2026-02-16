@@ -1,49 +1,89 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { activity as activityApi } from "../../lib/api";
 import "../css/logs.css";
 
-// Seed data: governance ledger events (Timestamp, Actor, Event Action, Target Resource, Severity)
-const seedEvents = [
-  { id: 1, timestamp: "2026-02-13 12:45:32", actor: "John Doe", ip: "192.168.1.101", action: "Login", target: "Platform", severity: "normal" },
-  { id: 2, timestamp: "2026-02-13 12:42:18", actor: "Sarah Malik", ip: "10.0.2.44", action: "Role changed", target: "User: Tea Assiddiq → RFP Reviewer", severity: "security" },
-  { id: 3, timestamp: "2026-02-13 12:38:05", actor: "System", ip: "—", action: "Config updated", target: "Submission deadline → 30 Apr 2026", severity: "admin" },
-  { id: 4, timestamp: "2026-02-13 12:12:00", actor: "John Doe", ip: "192.168.1.101", action: "Document viewed", target: "sso_security_policy.pdf", severity: "normal" },
-  { id: 5, timestamp: "2026-02-13 11:58:22", actor: "Unknown", ip: "203.0.113.89", action: "Failed auth attempt", target: "High-security doc access", severity: "critical" },
-  { id: 6, timestamp: "2026-02-13 11:42:10", actor: "Sarah Malik", ip: "10.0.2.44", action: "Setting updated", target: "Deadline config", severity: "admin" },
-  { id: 7, timestamp: "2026-02-13 11:22:05", actor: "Wirdan Athok", ip: "192.168.1.105", action: "File uploaded", target: "RFP #RFP-1298", severity: "normal" },
-  { id: 8, timestamp: "2026-02-13 10:12:33", actor: "System", ip: "—", action: "RFP status changed", target: "RFP-1298 Draft → In Review", severity: "normal" },
-  { id: 9, timestamp: "2026-02-13 09:55:00", actor: "Tea Assiddiq", ip: "10.0.2.12", action: "Bulk download request", target: "12 documents (rate limited)", severity: "security" },
-  { id: 10, timestamp: "2026-02-13 09:42:18", actor: "Admin", ip: "10.0.2.1", action: "Permission revoked", target: "User: temp_contractor", severity: "admin" },
-  { id: 11, timestamp: "2026-02-12 17:30:00", actor: "John Doe", ip: "192.168.1.101", action: "Logout", target: "Platform", severity: "normal" },
-  { id: 12, timestamp: "2026-02-12 16:15:44", actor: "Sarah Malik", ip: "10.0.2.44", action: "Export report", target: "Activity log (CSV)", severity: "admin" },
-];
-
 const severityLabel = {
+  info: "Normal",
   normal: "Normal",
   security: "Security",
   admin: "Admin",
+  warning: "Warning",
+  error: "Error",
   critical: "Critical",
 };
 
+function formatTimestamp(ts) {
+  if (!ts) return "—";
+  const d = typeof ts === "string" ? new Date(ts) : ts;
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
 export default function ActivityLog() {
+  const { user } = useAuth();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [filterPill, setFilterPill] = useState("All"); // All | Critical | Security | Adv. Filter
 
+  useEffect(() => {
+    activityApi.create({
+      actor: user?.name || user?.email || "User",
+      event_action: "Page viewed",
+      target_resource: "Activity Log",
+      severity: "info",
+      system: "web",
+    }).catch(() => {});
+  }, [user?.name, user?.email]);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await activityApi.list({ limit: 200 });
+      setEvents(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setError(e?.message || "Failed to load activity logs");
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
   const filteredEvents = useMemo(() => {
-    let list = seedEvents;
-    if (filterPill === "Critical") list = list.filter((e) => e.severity === "critical");
-    else if (filterPill === "Security") list = list.filter((e) => e.severity === "security" || e.severity === "critical");
+    let list = events;
+    if (filterPill === "Critical") list = list.filter((e) => (e.severity || "").toLowerCase() === "critical");
+    else if (filterPill === "Security") list = list.filter((e) => {
+      const s = (e.severity || "").toLowerCase();
+      return s === "security" || s === "critical";
+    });
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
       (e) =>
-        e.actor.toLowerCase().includes(q) ||
-        e.ip.toLowerCase().includes(q) ||
-        e.action.toLowerCase().includes(q) ||
-        e.target.toLowerCase().includes(q)
+        (e.actor || "").toLowerCase().includes(q) ||
+        (e.ip_address || "").toLowerCase().includes(q) ||
+        (e.event_action || "").toLowerCase().includes(q) ||
+        (e.target_resource || "").toLowerCase().includes(q)
     );
-  }, [search, filterPill]);
+  }, [events, search, filterPill]);
+
+  const securityCount = useMemo(() =>
+    events.filter((e) => { const s = (e.severity || "").toLowerCase(); return s === "security" || s === "critical"; }).length,
+    [events]
+  );
+  const adminCount = useMemo(() =>
+    events.filter((e) => (e.severity || "").toLowerCase() === "admin").length,
+    [events]
+  );
 
   return (
     <div className="glPage">
@@ -52,32 +92,38 @@ export default function ActivityLog() {
           <h1 className="glTitle">Governance Ledger</h1>
           <p className="glSubtitle">Immutable record of security events and platform activity.</p>
         </div>
-        <button type="button" className="glExportBtn">
-          Export Report
+        <button type="button" className="glExportBtn" onClick={fetchLogs} disabled={loading}>
+          {loading ? "Loading…" : "Refresh"}
         </button>
       </header>
+
+      {error && (
+        <div className="glError" role="alert" style={{ padding: 12, marginBottom: 16, background: "#fee", color: "#c00", borderRadius: 8 }}>
+          {error}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="glStats">
         <div className="glStatCard">
-          <div className="glStatValue">24,102</div>
-          <div className="glStatLabel">Total Events (24h)</div>
-          <div className="glStatMeta">Normal Volume</div>
+          <div className="glStatValue">{events.length}</div>
+          <div className="glStatLabel">Total Events</div>
+          <div className="glStatMeta">Platform activity</div>
         </div>
         <div className="glStatCard glStatCard-flag">
-          <div className="glStatValue">2</div>
+          <div className="glStatValue">{securityCount}</div>
           <div className="glStatLabel">Security Flags</div>
           <div className="glStatMeta">Requires Review</div>
         </div>
         <div className="glStatCard">
-          <div className="glStatValue">142</div>
+          <div className="glStatValue">{adminCount}</div>
           <div className="glStatLabel">Admin Actions</div>
           <div className="glStatMeta">Config Changes</div>
         </div>
         <div className="glStatCard glStatCard-score">
-          <div className="glStatValue">98%</div>
-          <div className="glStatLabel">Compliance Score</div>
-          <div className="glStatMeta">FERPA Audit</div>
+          <div className="glStatValue">{filteredEvents.length}</div>
+          <div className="glStatLabel">Filtered</div>
+          <div className="glStatMeta">Current view</div>
         </div>
       </div>
 
@@ -109,40 +155,48 @@ export default function ActivityLog() {
 
       {/* Table */}
       <div className="glTableWrap">
-        <table className="glTable">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Actor</th>
-              <th>Event Action</th>
-              <th>Target Resource</th>
-              <th>Severity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredEvents.length === 0 ? (
+        {loading ? (
+          <div className="glTableEmpty" style={{ padding: 32, textAlign: "center", color: "#666" }}>
+            Loading activity logs…
+          </div>
+        ) : (
+          <table className="glTable">
+            <thead>
               <tr>
-                <td colSpan={5} className="glTableEmpty">
-                  No events match your filters.
-                </td>
+                <th>Timestamp</th>
+                <th>Actor</th>
+                <th>Event Action</th>
+                <th>Target Resource</th>
+                <th>IP</th>
+                <th>Severity</th>
               </tr>
-            ) : (
-              filteredEvents.map((row) => (
-                <tr key={row.id}>
-                  <td className="glCell glCell-time">{row.timestamp}</td>
-                  <td className="glCell">{row.actor}</td>
-                  <td className="glCell">{row.action}</td>
-                  <td className="glCell glCell-target">{row.target}</td>
-                  <td className="glCell">
-                    <span className={`glSeverity glSeverity-${row.severity}`}>
-                      {severityLabel[row.severity]}
-                    </span>
+            </thead>
+            <tbody>
+              {filteredEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="glTableEmpty">
+                    {events.length === 0 ? "No activity logs yet. Actions across the app will appear here." : "No events match your filters."}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredEvents.map((row) => (
+                  <tr key={row.id}>
+                    <td className="glCell glCell-time">{formatTimestamp(row.timestamp)}</td>
+                    <td className="glCell">{row.actor ?? "—"}</td>
+                    <td className="glCell">{row.event_action ?? "—"}</td>
+                    <td className="glCell glCell-target">{row.target_resource ?? "—"}</td>
+                    <td className="glCell">{row.ip_address ?? "—"}</td>
+                    <td className="glCell">
+                      <span className={`glSeverity glSeverity-${(row.severity || "info").toLowerCase()}`}>
+                        {severityLabel[(row.severity || "info").toLowerCase()] ?? row.severity}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

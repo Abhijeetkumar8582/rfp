@@ -1,12 +1,12 @@
 /* Unified RFP app theme — purple + lime */
 :root {
-  --background: #f5f4f9;
+  --background: #f7f7f7;
   --foreground: #0f0f12;
   /* Theme tokens (shared across all pages) */
   --bg: #f5f4f9;
   --bg-deep: #edeaf4;
   --panel: #ffffff;
-  --text: #0f0f12;
+  --text: #000;
   --text-soft: #52525b;
   --muted: #71717a;
   --border: #e4e2ec;
@@ -37,9 +37,9 @@ body {
 }
 
 body {
-  color: var(--foreground);
+  color: #000;
   background: var(--background);
-  font-family: var(--font-geist-sans, Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif);
+  font-family: sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -59,4 +59,15 @@ a {
   html {
     color-scheme: dark;
   }
+}
+.span {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000;
+  line-height: 1.5;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
 }
