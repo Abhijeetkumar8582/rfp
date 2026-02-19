@@ -138,6 +138,109 @@
   background: rgba(26, 115, 232, 0.15);
 }
 
+.searchPageHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.searchPageProjectWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted, #5f6368);
+}
+
+.searchPageProjectLabel {
+  white-space: nowrap;
+}
+
+.searchPageProjectSelect {
+  padding: 8px 12px;
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 10px;
+  background: var(--panel);
+  color: #000;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.searchPageProjectSelect:hover,
+.searchPageProjectSelect:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+/* Search results (ChromaDB vector search) */
+.searchBardSearchError {
+  color: #c5221f;
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+
+.searchBardCopyAll {
+  margin-left: 12px;
+  padding: 6px 12px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.searchBardResultsList {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.searchBardResultItem {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border, #e8eaed);
+}
+
+.searchBardResultMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.searchBardResultFile {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand, #1a73e8);
+}
+
+.searchBardResultScore {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #5f6368);
+}
+
+.searchBardResultContent {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text, #202124);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.searchBardNoResults {
+  margin: 0;
+  color: var(--muted, #5f6368);
+  font-size: 14px;
+}
+
 /* Scrollable chat/answer area — only this section scrolls */
 .searchPageBardContent {
   flex: 1;
@@ -289,6 +392,27 @@
 .searchBardResponseBody {
   flex: 1;
   min-width: 0;
+}
+
+/* GPT answer block (RAG) */
+.searchBardAnswerWrap {
+  margin-bottom: 20px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 100%);
+  border: 1px solid rgba(26, 115, 232, 0.2);
+}
+
+.searchBardAnswer {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text, #202124);
+  white-space: pre-wrap;
+}
+
+.searchBardAnswerWrap .searchBardActionBtn {
+  margin-top: 4px;
 }
 
 /* Intro line: text + version link + speaker */

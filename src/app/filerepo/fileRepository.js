@@ -259,6 +259,158 @@ function FileDetailView({ file, onClose }) {
   );
 }
 
+const DEFAULT_CHUNK_SIZE = 200;
+const DEFAULT_CHUNK_OVERLAP = 30;
+const EMBEDDING_OPTIONS = [
+  { id: "text-embedding-3-small", label: "OpenAI text-embedding-3-small" },
+  { id: "text-embedding-3-large", label: "OpenAI text-embedding-3-large" },
+  { id: "gemini-embedding-001", label: "Gemini gemini-embedding-001" },
+];
+
+function TrainDatasourceModal({ onClose, projectId, projectName, documentCount, projectsApi }) {
+  const [datasourceName, setDatasourceName] = useState("");
+  const [chunkSize, setChunkSize] = useState(DEFAULT_CHUNK_SIZE);
+  const [chunkOverlap, setChunkOverlap] = useState(DEFAULT_CHUNK_OVERLAP);
+  const [embeddingModel, setEmbeddingModel] = useState(EMBEDDING_OPTIONS[0].id);
+  const [includeMetadata, setIncludeMetadata] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (projectId == null) {
+      setSubmitError("No project selected.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitMessage(null);
+    setSubmitError(null);
+    try {
+      const res = await projectsApi.trainDatasource(projectId, {
+        chunk_size_words: chunkSize,
+        chunk_overlap_words: chunkOverlap,
+        embedding_model: embeddingModel,
+        include_metadata: includeMetadata,
+      });
+      setSubmitMessage(
+        `Datasource trained. ${res.documents_synced} document(s) and ${res.chunks_synced} chunk(s) synced to ChromaDB.`
+      );
+    } catch (err) {
+      setSubmitError(err.message || "Training failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleClose() {
+    if (!submitting) onClose();
+  }
+
+  return (
+    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-label="Train datasource">
+      <div className="frAddFilePanel frTrainDatasourcePanel">
+        <div className="frFileDetailHeader">
+          <h2 className="frFileDetailTitle">Train datasource</h2>
+          <button type="button" className="frFileDetailClose" onClick={handleClose} aria-label="Close" disabled={submitting}>✕</button>
+        </div>
+
+        <form className="frTrainDatasourceBody" onSubmit={handleSubmit}>
+          <p className="frHint frTrainDatasourceIntro">
+            Configure how this repository is used as a datasource for search and RAG. Settings apply to future ingestion; existing chunks use previous config.
+          </p>
+
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="train-datasource-name">Datasource name (optional)</label>
+            <input
+              id="train-datasource-name"
+              type="text"
+              className="frTrainInput"
+              value={datasourceName}
+              onChange={(e) => setDatasourceName(e.target.value)}
+              placeholder={projectName ? `${projectName} — ${documentCount} docs` : "My repository"}
+            />
+          </div>
+
+          <div className="frTrainFieldGroup">
+            <div className="frTrainField">
+              <label className="frSmallLabel" htmlFor="train-chunk-size">Words per chunk</label>
+              <input
+                id="train-chunk-size"
+                type="number"
+                min={50}
+                max={500}
+                step={50}
+                className="frTrainInput"
+                value={chunkSize}
+                onChange={(e) => setChunkSize(Number(e.target.value) || DEFAULT_CHUNK_SIZE)}
+              />
+              <span className="frTrainHint">Recommended: 150–250. Larger = fewer, longer chunks.</span>
+            </div>
+            <div className="frTrainField">
+              <label className="frSmallLabel" htmlFor="train-chunk-overlap">Overlap (words)</label>
+              <input
+                id="train-chunk-overlap"
+                type="number"
+                min={0}
+                max={100}
+                step={10}
+                className="frTrainInput"
+                value={chunkOverlap}
+                onChange={(e) => setChunkOverlap(Number(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
+              />
+              <span className="frTrainHint">Overlap between consecutive chunks for context.</span>
+            </div>
+          </div>
+
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="train-embedding-model">Embedding model</label>
+            <select
+              id="train-embedding-model"
+              className="frVisibilitySelect frTrainSelect"
+              value={embeddingModel}
+              onChange={(e) => setEmbeddingModel(e.target.value)}
+            >
+              {EMBEDDING_OPTIONS.map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="frTrainField frTrainCheckboxWrap">
+            <label className="frTrainCheckboxLabel">
+              <input
+                type="checkbox"
+                checked={includeMetadata}
+                onChange={(e) => setIncludeMetadata(e.target.checked)}
+                className="frTrainCheckbox"
+              />
+              <span>Include GPT-generated metadata (title, tags, taxonomy) in retrieval</span>
+            </label>
+          </div>
+
+          {submitMessage && (
+            <div className="frTrainSubmitMessage" role="status">{submitMessage}</div>
+          )}
+          {submitError && (
+            <div className="frTrainSubmitError" role="alert">{submitError}</div>
+          )}
+
+          <div className="frAddFileFooter">
+            <button type="button" className="frAddFileCancel" onClick={handleClose} disabled={submitting}>
+              Cancel
+            </button>
+            <button type="submit" className="frPrimaryBtn" disabled={submitting}>
+              {submitting ? "Starting…" : "Start training"}
+            </button>
+          </div>
+        </form>
+      </div>
+      <div className="frFileDetailBackdrop" onClick={handleClose} aria-hidden="true" />
+    </div>
+  );
+}
+
 function AddFileModal({ onClose, onUpload, uploading, progress }) {
   const fileInputRef = useRef(null);
   const [visibility, setVisibility] = useState("open_for_all");
@@ -373,6 +525,7 @@ export default function FileRepository() {
   const fileInputRef = useRef(null);
   const { user } = useAuth();
   const [showAddFileModal, setShowAddFileModal] = useState(false);
+  const [showTrainDatasourceModal, setShowTrainDatasourceModal] = useState(false);
 
   const [tab, setTab] = useState("All");
   const [search, setSearch] = useState("");
@@ -557,6 +710,15 @@ export default function FileRepository() {
           progress={progress}
         />
       )}
+      {showTrainDatasourceModal && (
+        <TrainDatasourceModal
+          onClose={() => setShowTrainDatasourceModal(false)}
+          projectId={selectedProjectId}
+          projectName={projects.find((p) => p.id === selectedProjectId)?.name}
+          documentCount={documents.length}
+          projectsApi={projectsApi}
+        />
+      )}
 
       {/* Header */}
       <div className="frHeader">
@@ -565,9 +727,14 @@ export default function FileRepository() {
             <h1 className="frTitle">Repository</h1>
             <p className="frSubtitle">Semantic clusters — documents auto-assigned by meaning</p>
           </div>
-          <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
-            <span className="frPlus">＋</span> Add new file
-          </button>
+          <div className="frHeaderActions">
+            <button type="button" className="frTrainDatasourceBtn" onClick={() => setShowTrainDatasourceModal(true)}>
+              Train datasource
+            </button>
+            <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
+              <span className="frPlus">＋</span> Add new file
+            </button>
+          </div>
         </div>
 
         <div className="frTabs">

@@ -48,7 +48,7 @@ export default function SignupPage() {
 
           <form className="auth-form" onSubmit={handleSubmit}>
             {error && (
-              <div className="auth-error" role="alert" style={{ color: "#c00", marginBottom: 12 }}>
+              <div className="auth-error" role="alert">
                 {error}
               </div>
             )}
@@ -120,9 +120,13 @@ export default function SignupPage() {
         </div>
 
         <div className="auth-card auth-promo-card">
+          <div className="auth-promo-inner">
           <h2 className="auth-promo-heading">
-            Your new home for energy efficiency and costs savings
+            Your new home for energy efficiency and cost savings
           </h2>
+          <p className="auth-promo-subtitle">
+            Track usage, manage billing, and unlock insights—all in one place.
+          </p>
           <div className="auth-trust-badge">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -170,6 +174,7 @@ export default function SignupPage() {
                 <span className="gas">• Gas -32%</span>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>

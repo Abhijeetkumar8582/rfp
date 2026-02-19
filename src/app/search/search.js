@@ -1,30 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { activity as activityApi } from "../../lib/api";
+import { activity as activityApi, search as searchApi, projects as projectsApi } from "../../lib/api";
 import "../css/SearchSection.css";
-
-const SAMPLE_RESPONSES = [
-  {
-    intro: "Sure, here is a sci-fi beginning in Ted Chiang's style (version 1):",
-    body: "The year is 2042. Humanity has finally achieved interstellar travel, but it has come at a price. The journey to the nearest star system takes decades, and the only way to survive the voyage is to place people in cryogenic sleep.\n\nOne such cryonaut is a young woman named Anya. She is awakened from her sleep after 20 years to find that the world she left behind is no longer the same. The climate has changed drastically, and the global economy has collapsed.\n\nAnya is determined to find a way to help her fellow cryonauts adjust to this new world, but she soon realizes that the challenges they face are far greater than she could have imagined.",
-    commentary:
-      "This beginning is in Ted Chiang's style in a few ways. First, it is set in the near future, which is a common setting for Chiang's stories. Second, it introduces a scientific concept that is both plausible and thought-provoking: the idea of interstellar travel through cryogenic sleep. Third, it raises a moral dilemma: what is the right thing to do when you wake up in a world that is very different from the one you left behind? I hope you like it!",
-  },
-  {
-    intro: "Sure, here is a sci-fi beginning in Ted Chiang's style (version 2):",
-    body: "The first message from Tau Ceti arrived on a Tuesday. It was not a voice, not an image—just a string of prime numbers, repeating in a pattern that could not have been natural.\n\nDr. Elena Vasquez had spent twenty years waiting for this. She had given up tenure, family, the certainty of gravity. Now, in the sterile quiet of the listening station, she watched the numbers scroll across the screen and wondered what she was supposed to feel.",
-    commentary:
-      "Version 2 leans into Chiang's love of mathematical elegance and first contact. The tone is more restrained and observational, with a focus on the emotional weight of discovery rather than world-building.",
-  },
-  {
-    intro: "Sure, here is a sci-fi beginning in Ted Chiang's style (version 3):",
-    body: "They called it the Memory Market. For a fee, you could borrow someone else's childhood—not the facts of it, but the feel: the smell of rain on hot pavement, the weight of a hand on your shoulder, the exact shade of blue that meant safety.\n\nMaya had sold hers at eighteen. She had needed the money. Now, at forty-two, she was buying it back, piece by piece, and finding that the person who had lived those years was not quite her.",
-    commentary:
-      "Version 3 focuses on identity and memory, themes Chiang often explores. The speculative element is subtle and personal, with a near-future setting that feels intimate rather than epic.",
-  },
-];
 
 function IconUser() {
   return (
@@ -141,11 +120,23 @@ export default function SearchSection() {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [responses] = useState(SAMPLE_RESPONSES);
-  const [versionIndex, setVersionIndex] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [language, setLanguage] = useState("en");
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [searchResults, setSearchResults] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+
+  useEffect(() => {
+    projectsApi.list().then((list) => {
+      setProjects(list || []);
+      if (list?.length > 0 && selectedProjectId == null) {
+        setSelectedProjectId(list[0].id);
+      }
+    }).catch(() => {});
+  }, []);
 
   const languages = [
     { code: "en", label: "English" },
@@ -156,29 +147,51 @@ export default function SearchSection() {
   ];
   const currentLanguageLabel = languages.find((l) => l.code === language)?.label ?? "English";
 
-  const current = responses[versionIndex];
-  const canPrev = versionIndex > 0;
-  const canNext = versionIndex < responses.length - 1;
-
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e?.preventDefault();
     const q = (query || "").trim();
     if (!q) return;
+    if (selectedProjectId == null) {
+      setSearchError("Select a project to search.");
+      return;
+    }
     setSubmittedQuery(q);
     setHasSearched(true);
-    setVersionIndex(0);
-    activityApi.create({
-      actor: user?.name || user?.email || "User",
-      event_action: "Search query",
-      target_resource: q.length > 200 ? q.slice(0, 200) + "…" : q,
-      severity: "info",
-      system: "web",
-    }).catch(() => {});
+    setSearchError(null);
+    setSearchResults(null);
+    setSearchLoading(true);
+    try {
+      const res = await searchApi.answer(q, selectedProjectId, 10);
+      setSearchResults(res);
+      activityApi.create({
+        actor: user?.name || user?.email || "User",
+        event_action: "Search query",
+        target_resource: q.length > 200 ? q.slice(0, 200) + "…" : q,
+        severity: "info",
+        system: "web",
+      }).catch(() => {});
+    } catch (err) {
+      setSearchError(err.message || "Search failed.");
+      setSearchResults(null);
+    } finally {
+      setSearchLoading(false);
+    }
   }
 
-  function handleCopy() {
-    const text = [current.intro, current.body, current.commentary].join("\n\n");
-    navigator.clipboard?.writeText(text);
+  function handleCopyResults() {
+    const parts = [];
+    if (searchResults?.answer) {
+      parts.push("Answer:\n" + searchResults.answer);
+    }
+    if (searchResults?.results?.length) {
+      parts.push(
+        "Sources:\n" +
+        searchResults.results
+          .map((r, i) => `[${i + 1}] ${r.filename} (score: ${r.score})\n${r.content}`)
+          .join("\n\n---\n\n")
+      );
+    }
+    if (parts.length) navigator.clipboard?.writeText(parts.join("\n\n"));
   }
 
   return (
@@ -186,7 +199,23 @@ export default function SearchSection() {
       {/* Top header: bot name + language selector */}
       <header className="searchPageTopHeader">
         <h1 className="searchPageBotName">RFP Assistant</h1>
-        <div className="searchPageLangWrap">
+        <div className="searchPageHeaderRight">
+          {projects.length > 0 && (
+            <label className="searchPageProjectWrap">
+              <span className="searchPageProjectLabel">Project</span>
+              <select
+                className="searchPageProjectSelect"
+                value={selectedProjectId ?? ""}
+                onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : null)}
+                aria-label="Project to search"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="searchPageLangWrap">
           <button
             type="button"
             className="searchPageLangTrigger"
@@ -221,6 +250,7 @@ export default function SearchSection() {
               </ul>
             </>
           )}
+          </div>
         </div>
       </header>
 
@@ -238,70 +268,50 @@ export default function SearchSection() {
           </header>
         )}
 
-        {/* Main: AI response */}
-        {hasSearched && current && (
+        {/* Main: search results from ChromaDB (question embedding vs document embeddings) */}
+        {hasSearched && (
           <section className="searchBardResponse">
             <div className="searchBardResponseInner">
               <div className="searchBardResponseAvatar">
                 <IconStar />
               </div>
               <div className="searchBardResponseBody">
-                <div className="searchBardIntro">
-                  <span>{current.intro.replace(/\(version \d+\)\.?$/, "").trim()}</span>
-                  <button
-                    type="button"
-                    className="searchBardVersionLink"
-                    onClick={() => setVersionIndex((v) => (v + 1) % responses.length)}
-                  >
-                    (version {versionIndex + 1})
-                  </button>
-                  <span className="searchBardIntroTrail">.</span>
-                  <button type="button" className="searchBardSpeaker" aria-label="Listen">
-                    <IconSpeaker />
-                  </button>
-                </div>
-                <div className="searchBardTextBlock">
-                  <button
-                    type="button"
-                    className="searchBardNav searchBardNavLeft"
-                    aria-label="Previous version"
-                    disabled={!canPrev}
-                    onClick={() => setVersionIndex((i) => i - 1)}
-                  >
-                    <IconChevronLeft />
-                  </button>
-                  <div className="searchBardParagraphs">
-                    {current.body.split("\n\n").map((p, i) => (
-                      <p key={i}>{p}</p>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="searchBardNav searchBardNavRight"
-                    aria-label="Next version"
-                    disabled={!canNext}
-                    onClick={() => setVersionIndex((i) => i + 1)}
-                  >
-                    <IconChevronRight />
-                  </button>
-                </div>
-                <p className="searchBardCommentary">{current.commentary}</p>
-                <div className="searchBardActions">
-                  <button type="button" className="searchBardActionBtn" onClick={handleCopy} title="Copy">
-                    <IconCopy />
-                  </button>
-                  <button type="button" className="searchBardActionBtn" title="Regenerate">
-                    <IconRegenerate />
-                  </button>
-                  <button type="button" className="searchBardActionBtn" title="Fact check">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <text x="6" y="17" fontSize="14" fontWeight="700" fontFamily="sans-serif">G</text>
-                    </svg>
-                  </button>
-                  <button type="button" className="searchBardActionBtn" title="More options">
-                    <IconMore />
-                  </button>
-                </div>
+                {searchLoading && (
+                  <p className="searchBardIntro">Searching your documents and generating an answer with GPT…</p>
+                )}
+                {searchError && (
+                  <p className="searchBardSearchError" role="alert">{searchError}</p>
+                )}
+                {!searchLoading && searchResults && (
+                  <>
+                    {searchResults.answer != null && searchResults.answer !== "" && (
+                      <div className="searchBardAnswerWrap">
+                        <p className="searchBardAnswer">{searchResults.answer}</p>
+                        <button type="button" className="searchBardActionBtn searchBardCopyAll" onClick={handleCopyResults} title="Copy answer and sources">
+                          <IconCopy /> Copy all
+                        </button>
+                      </div>
+                    )}
+                    <div className="searchBardIntro">
+                      <span>Sources ({searchResults.results?.length ?? 0} chunks from your knowledge base)</span>
+                    </div>
+                    <div className="searchBardResultsList">
+                      {searchResults.results?.length === 0 ? (
+                        <p className="searchBardNoResults">No matching chunks. Try a different question or train the datasource for this project.</p>
+                      ) : (
+                        searchResults.results?.map((r, i) => (
+                          <div key={i} className="searchBardResultItem">
+                            <div className="searchBardResultMeta">
+                              <span className="searchBardResultFile">{r.filename || "Document"}</span>
+                              <span className="searchBardResultScore">score: {r.score.toFixed(2)}</span>
+                            </div>
+                            <p className="searchBardResultContent">{r.content}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </section>
@@ -313,7 +323,7 @@ export default function SearchSection() {
             <div className="searchBardEmptyAvatar">
               <IconStar />
             </div>
-            <p className="searchBardEmptyText">Ask anything. Try &quot;Write three versions of a sci-fi beginning in Ted Chiang&apos;s style.&quot;</p>
+            <p className="searchBardEmptyText">Ask a question to search across your documents. Your question is embedded, matched against chunk embeddings, and answered by GPT using the top matches.</p>
           </div>
         )}
       </div>

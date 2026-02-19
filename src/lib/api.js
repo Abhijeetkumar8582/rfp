@@ -52,6 +52,8 @@ async function apiFetch(path, options = {}) {
   };
   if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {
     if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  } else if (options.body && typeof options.body === "string" && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
   }
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -170,6 +172,19 @@ export const projects = {
   async get(id) {
     return apiFetch(`/api/v1/projects/${id}`);
   },
+
+  /**
+   * Train datasource: sync all document chunks and embeddings from DB to ChromaDB for this project.
+   * @param {number} projectId
+   * @param {object} [config] - Optional: chunk_size_words, chunk_overlap_words, embedding_model, include_metadata
+   * @returns {{ message: string, documents_synced: number, chunks_synced: number }}
+   */
+  async trainDatasource(projectId, config = {}) {
+    return apiFetch(`/api/v1/projects/${projectId}/train-datasource`, {
+      method: "POST",
+      body: JSON.stringify(config),
+    });
+  },
 };
 
 // Documents
@@ -230,12 +245,32 @@ export const rfpQuestions = {
   },
 };
 
-// Search (backend may not be fully implemented)
+// Search — question embedding vs ChromaDB document embeddings
 export const search = {
-  async query(queryText, k = 5) {
+  /**
+   * @param {string} queryText - User question
+   * @param {number} projectId - Project whose ChromaDB collection to search
+   * @param {number} [k=5] - Top-k chunks to return
+   * @returns {{ query_text: string, project_id: number, k: number, results: Array<{ content: string, document_id: number, filename: string, chunk_index: number, distance: number, score: number }> }}
+   */
+  async query(queryText, projectId, k = 5) {
     return apiFetch("/api/v1/search/query", {
       method: "POST",
-      body: JSON.stringify({ query_text: queryText, k }),
+      body: JSON.stringify({ query_text: queryText, project_id: projectId, k }),
+    });
+  },
+
+  /**
+   * Search + GPT answer (RAG): same as query, then GPT synthesizes an answer from top-k chunks.
+   * @param {string} queryText - User question
+   * @param {number} projectId - Project whose ChromaDB collection to search
+   * @param {number} [k=10] - Top-k chunks to retrieve and pass to GPT
+   * @returns {{ query_text: string, project_id: number, k: number, results: Array<...>, answer: string }}
+   */
+  async answer(queryText, projectId, k = 10) {
+    return apiFetch("/api/v1/search/answer", {
+      method: "POST",
+      body: JSON.stringify({ query_text: queryText, project_id: projectId, k }),
     });
   },
 };
