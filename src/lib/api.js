@@ -174,6 +174,17 @@ export const projects = {
   },
 
   /**
+   * List RFP documents for a project (non-deleted).
+   * @param {string} projectId
+   * @param {number} [skip=0]
+   * @param {number} [limit=100]
+   * @returns {Promise<Array>} list of document objects
+   */
+  async listDocuments(projectId, skip = 0, limit = 100) {
+    return apiFetch(`/api/v1/projects/${projectId}/documents?skip=${skip}&limit=${limit}`);
+  },
+
+  /**
    * Train datasource: sync all document chunks and embeddings from DB to ChromaDB for this project.
    * @param {number} projectId
    * @param {object} [config] - Optional: chunk_size_words, chunk_overlap_words, embedding_model, include_metadata
@@ -195,11 +206,14 @@ export const documents = {
     return apiFetch(path);
   },
 
-  async upload(projectId, uploadedBy, file) {
+  async upload(projectId, uploadedBy, file, options = {}) {
     const form = new FormData();
     form.append("project_id", String(projectId));
     form.append("uploaded_by", String(uploadedBy));
     form.append("file", file);
+    if (options.extractPdfImages !== undefined) {
+      form.append("extract_pdf_images", String(options.extractPdfImages));
+    }
     return apiFetch("/api/v1/documents", {
       method: "POST",
       body: form,
@@ -220,6 +234,25 @@ export const documents = {
       method: "POST",
     });
   },
+
+  /**
+   * Update document metadata (title, description, doc_type, tags, taxonomy_suggestions).
+   * @param {string} documentId
+   * @param {{ doc_title?: string, doc_description?: string, doc_type?: string, tags?: string[], taxonomy_suggestions?: object }} body
+   */
+  async update(documentId, body) {
+    return apiFetch(`/api/v1/documents/${documentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  /** Soft-delete document and remove from ChromaDB. */
+  async delete(documentId) {
+    return apiFetch(`/api/v1/documents/${documentId}`, {
+      method: "DELETE",
+    });
+  },
 };
 
 // RFP Questions (import from Excel/CSV, list with pagination)
@@ -234,6 +267,18 @@ export const rfpQuestions = {
     return apiFetch(`/api/v1/rfp-questions?${q.toString()}`);
   },
 
+  /** Get a single RFP by rfpid (full details including questions and answers). */
+  async get(rfpid) {
+    return apiFetch(`/api/v1/rfp-questions/${encodeURIComponent(rfpid)}`);
+  },
+
+  /** Delete an RFP by rfpid. */
+  async delete(rfpid) {
+    return apiFetch(`/api/v1/rfp-questions/${encodeURIComponent(rfpid)}`, {
+      method: "DELETE",
+    });
+  },
+
   async importQuestions(userId, file) {
     const form = new FormData();
     form.append("user_id", String(userId));
@@ -242,6 +287,61 @@ export const rfpQuestions = {
       method: "POST",
       body: form,
     });
+  },
+
+  /**
+   * Update answers array for an RFP (same order as questions).
+   * @param {string} rfpid - RFP id from import
+   * @param {string[]} answers - Array of answer strings
+   */
+  async updateAnswers(rfpid, answers) {
+    return apiFetch(`/api/v1/rfp-questions/${encodeURIComponent(rfpid)}/answers`, {
+      method: "PATCH",
+      body: JSON.stringify({ answers }),
+    });
+  },
+};
+
+// Rephrase — rephrase answer in a more technical way (question + answer → rephrased answer)
+export const rephrase = {
+  /**
+   * @param {string} question - The question context
+   * @param {string} answer - The answer to rephrase (min length 1)
+   * @returns {{ rephrased_answer: string }}
+   */
+  async rephrase(question, answer) {
+    return apiFetch("/api/v1/rephrase", {
+      method: "POST",
+      body: JSON.stringify({ question: question || "", answer: (answer || "").trim() }),
+    });
+  },
+};
+
+// Intelligence Hub — dashboard data from search_queries and documents
+export const intelligenceHub = {
+  /**
+   * @param {string} [projectId] - Optional project ID; uses first project if omitted
+   * @returns {{ most_searched_topics: Array<{topic:string,count:number}>, low_confidence_areas: Array<{section:string,confidence:number}>, gaps_in_knowledge: Array<{area:string,priority:string}>, recently_uploaded: Array<{name:string,time:string,size:string}> }}
+   */
+  async get(projectId = null) {
+    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    return apiFetch(`/api/v1/search/intelligence${q}`);
+  },
+};
+
+// Dashboard analytics — aggregated metrics for the dashboard page
+export const dashboard = {
+  /**
+   * @param {string} [projectId] - Optional project ID; uses first project if omitted
+   * @param {number} [days=28] - Time window in days
+   * @returns {Promise<{ overall_answer_accuracy: number, total_questions_answered: number, total_unanswered_questions: number, total_active_users: number, average_confidence_score: number, search_success_rate: number, low_confidence_answers: number, average_response_time_ms: number|null, high_severity_knowledge_gaps: number, total_chunks_index: number }>}
+   */
+  async getMetrics(projectId = null, days = 28) {
+    const params = new URLSearchParams();
+    if (projectId != null) params.set("project_id", String(projectId));
+    if (days != null) params.set("days", String(days));
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return apiFetch(`/api/v1/analytics/dashboard-metrics${q}`);
   },
 };
 
@@ -271,6 +371,174 @@ export const search = {
     return apiFetch("/api/v1/search/answer", {
       method: "POST",
       body: JSON.stringify({ query_text: queryText, project_id: projectId, k }),
+    });
+  },
+
+  /**
+   * Agentic reasoning search: query understanding, rewriting, multi-query retrieval,
+   * evidence bundling, reranking, answer synthesis, self-check.
+   * @param {string} queryText - User question
+   * @param {number} projectId - Project whose ChromaDB collection to search
+   * @param {object} [opts] - Optional: k (retrieve count), top_k (after rerank), skip_self_check
+   */
+  async reasoning(queryText, projectId, opts = {}) {
+    const { k = 20, top_k = 12, skip_self_check = false } = opts;
+    return apiFetch("/api/v1/search/reasoning", {
+      method: "POST",
+      body: JSON.stringify({
+        query_text: queryText,
+        project_id: projectId,
+        k,
+        top_k,
+        skip_self_check,
+      }),
+    });
+  },
+
+  /**
+   * Streaming reasoning: same as reasoning but returns Server-Sent Events.
+   * Calls onEvent({ type, data }) for each event (status, query_analysis, search_query, confidence, result, error).
+   * Resolves with the full result when event type is "result"; rejects on "error" or HTTP error.
+   */
+  async reasoningStream(queryText, projectId, opts = {}, { onEvent } = {}) {
+    const { k = 20, top_k = 12, skip_self_check = false } = opts;
+    const url = `${API_BASE}/api/v1/search/reasoning/stream`;
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        query_text: queryText,
+        project_id: projectId,
+        k,
+        top_k,
+        skip_self_check,
+      }),
+    });
+
+    if (res.status === 401) {
+      const refresh = getRefreshToken();
+      if (refresh) {
+        const refreshed = await refreshAccessToken(refresh);
+        if (refreshed) return this.reasoningStream(queryText, projectId, opts, { onEvent });
+      }
+      clearTokens();
+      if (typeof window !== "undefined") window.location.href = "/login";
+      throw new Error("Session expired");
+    }
+
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const json = await res.json();
+        if (json.detail) detail = typeof json.detail === "string" ? json.detail : JSON.stringify(json.detail);
+      } catch (_) {
+        const t = await res.text();
+        if (t) detail = t;
+      }
+      throw new Error(detail);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentEvent = null;
+    let currentData = [];
+
+    const emit = (type, data) => {
+      if (onEvent) onEvent({ type, data });
+    };
+
+    return new Promise((resolve, reject) => {
+      const processLine = (line) => {
+        if (line.startsWith("event:")) {
+          if (currentEvent != null && currentData.length > 0) {
+            try {
+              const data = JSON.parse(currentData.join("\n"));
+              if (currentEvent === "result") {
+                resolve(data);
+                return "done";
+              }
+              if (currentEvent === "error") {
+                reject(new Error(data.detail || "Stream error"));
+                return "done";
+              }
+              emit(currentEvent, data);
+            } catch (e) {
+              if (currentEvent === "error") reject(e);
+            }
+          }
+          currentEvent = line.slice(6).trim();
+          currentData = [];
+          return null;
+        }
+        if (line.startsWith("data:")) {
+          currentData.push(line.slice(5).trimStart());
+          return null;
+        }
+        return null;
+      };
+
+      const pump = () => {
+        reader.read().then(({ value, done }) => {
+          if (done) {
+            if (currentEvent && currentData.length > 0) {
+              try {
+                const data = JSON.parse(currentData.join("\n"));
+                if (currentEvent === "result") resolve(data);
+                else if (currentEvent === "error") reject(new Error(data.detail || "Stream error"));
+                else emit(currentEvent, data);
+              } catch (_) {}
+            }
+            return;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const block of parts) {
+            const lines = block.split("\n");
+            for (const line of lines) {
+              const out = processLine(line);
+              if (out === "done") return;
+            }
+            if (currentEvent != null && currentData.length > 0) {
+              try {
+                const data = JSON.parse(currentData.join("\n"));
+                if (currentEvent === "result") {
+                  resolve(data);
+                  return;
+                }
+                if (currentEvent === "error") {
+                  reject(new Error(data.detail || "Stream error"));
+                  return;
+                }
+                emit(currentEvent, data);
+              } catch (_) {}
+              currentEvent = null;
+              currentData = [];
+            }
+          }
+          pump();
+        }).catch(reject);
+      };
+      pump();
+    });
+  },
+
+  /**
+   * Submit feedback for a search query.
+   * @param {number} searchQueryId - ID of the search query (from GET /search/queries)
+   * @param {object} feedback - { feedback_status: "positive"|"negative"|"neutral"|"not_given", feedback_score: 1|0|-1, feedback_reason?: string, feedback_text?: string }
+   */
+  async submitFeedback(searchQueryId, feedback) {
+    return apiFetch(`/api/v1/search/queries/${searchQueryId}/feedback`, {
+      method: "PATCH",
+      body: JSON.stringify(feedback),
     });
   },
 };

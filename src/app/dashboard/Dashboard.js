@@ -1,83 +1,64 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
-import { activity as activityApi } from "../../lib/api";
+import { activity as activityApi, dashboard as dashboardApi } from "../../lib/api";
 import "../css/dashboard.css";
 
-const statsTabs = [
-  { title: "Active RFPs", subtitle: "In Progress" },
-  { title: "In Review", subtitle: "Pending" },
-  { title: "Submitted", subtitle: "This Month" },
-  { title: "Draft", subtitle: "Saved" },
-  { title: "Completed", subtitle: "Closed" },
+const RANGE_OPTIONS = [
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 28 days", days: 28 },
+  { label: "This month", days: 30 },
 ];
 
-const tableRows = [
-  {
-    id: 1,
-    name: "RFP-1298",
-    type: "Request",
-    cat: "Procurement",
-    sku: "RFP-1298",
-    price: "—",
-    qty: "—",
-    channel: "Open",
-    status: "In Review",
-    source: "Internal",
-  },
-  {
-    id: 2,
-    name: "RFP-1297",
-    type: "Request",
-    cat: "Services",
-    sku: "RFP-1297",
-    price: "—",
-    qty: "—",
-    channel: "Open",
-    status: "Draft",
-    source: "Internal",
-  },
-  {
-    id: 3,
-    name: "RFP-1296",
-    type: "Request",
-    cat: "Procurement",
-    sku: "RFP-1296",
-    price: "—",
-    qty: "—",
-    channel: "Closed",
-    status: "Approved",
-    source: "Internal",
-  },
-  {
-    id: 4,
-    name: "RFP-1295",
-    type: "Request",
-    cat: "Vendor",
-    sku: "RFP-1295",
-    price: "—",
-    qty: "—",
-    channel: "Open",
-    status: "Submitted",
-    source: "Internal",
-  },
-  {
-    id: 5,
-    name: "RFP-1294",
-    type: "Request",
-    cat: "Procurement",
-    sku: "RFP-1294",
-    price: "—",
-    qty: "—",
-    channel: "Closed",
-    status: "Completed",
-    source: "Internal",
-  },
+const METRIC_CARDS = [
+  { key: "overall_answer_accuracy", title: "Overall answer accuracy", format: "percent", subtitle: "From feedback / answer status" },
+  { key: "total_questions_answered", title: "Total questions answered", format: "integer", subtitle: "Answered in window" },
+  { key: "total_unanswered_questions", title: "Total unanswered questions", format: "integer", subtitle: "Unanswered or low confidence" },
+  { key: "total_active_users", title: "Total active users", format: "integer", subtitle: "Distinct users who asked questions" },
+  { key: "average_confidence_score", title: "Average confidence score", format: "percent", subtitle: "0–100% from AI confidence" },
+  { key: "search_success_rate", title: "Search success rate", format: "percent", subtitle: "Queries with at least one result" },
+  { key: "low_confidence_answers", title: "Low-confidence answers", format: "integer", subtitle: "Answers below 65% confidence" },
+  { key: "average_response_time_ms", title: "Average response time", format: "ms", subtitle: "Mean latency per query" },
+  { key: "high_severity_knowledge_gaps", title: "High-severity knowledge gaps", format: "integer", subtitle: "No results or critical gaps" },
+  { key: "total_chunks_index", title: "Total chunks indexed", format: "integer", subtitle: "Chunks in vector store" },
 ];
+
+function formatValue(value, format) {
+  if (value == null && format !== "integer") return "—";
+  switch (format) {
+    case "percent":
+      return value != null ? `${(Number(value) * 100).toFixed(1)}%` : "—";
+    case "integer":
+      return value != null ? Number(value).toLocaleString() : "0";
+    case "ms":
+      return value != null ? `${Number(value).toFixed(0)} ms` : "—";
+    default:
+      return value != null ? String(value) : "—";
+  }
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [days, setDays] = useState(28);
+
+  const fetchMetrics = useCallback(async (projectId = null, daysVal = 28) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await dashboardApi.getMetrics(projectId, daysVal);
+      setMetrics(data);
+    } catch (e) {
+      setError(e?.message || "Failed to load dashboard metrics");
+      setMetrics(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     activityApi.create({
       actor: user?.name || user?.email || "User",
@@ -88,254 +69,64 @@ export default function Dashboard() {
     }).catch(() => {});
   }, [user?.name, user?.email]);
 
+  useEffect(() => {
+    fetchMetrics(null, days);
+  }, [days, fetchMetrics]);
+
   return (
     <AppShell>
       <>
-        {/* Header */}
         <header className="headerRow">
           <div>
             <h1 className="pageTitle">RFP Dashboard</h1>
-            <div className="pageSub">Request for Proposal overview</div>
+            <div className="pageSub">Search & answer metrics overview</div>
           </div>
 
           <div className="rangeSwitch">
-            <button className="rangeBtn">Last 7 days</button>
-            <button className="rangeBtn rangeBtnActive">Last 28 days</button>
-            <button className="rangeBtn">This month</button>
+            {RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.days}
+                type="button"
+                className={`rangeBtn ${days === opt.days ? "rangeBtnActive" : ""}`}
+                onClick={() => setDays(opt.days)}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </header>
 
-        {/* Top cards */}
-        <section className="topCards">
-          {statsTabs.map((t) => (
-            <div key={t.title} className="miniCard">
-              <div className="miniCardTop">
-                <div className="miniCardTitle">{t.title}</div>
-                <button className="kebab" aria-label="menu">
-                  ⋯
-                </button>
-              </div>
-              <div className="miniCardSub">{t.subtitle}</div>
-            </div>
-          ))}
-        </section>
-
-        {/* Search + actions */}
-        <section className="actionsRow">
-          <div className="searchWrap">
-            <span className="searchIcon">🔎</span>
-            <input
-              className="searchInput"
-              placeholder="Search RFPs..."
-            />
-          </div>
-
-          <div className="actionsRight">
-            <button className="ghostBtn">
-              <span className="btnIcon">⚲</span> Filters
+        {error && (
+          <section className="dashboardError">
+            <span className="dashboardErrorText">{error}</span>
+            <button type="button" className="ghostBtn" onClick={() => fetchMetrics(null, days)}>
+              Retry
             </button>
-            <button className="ghostBtn">
-              <span className="btnIcon">⤓</span> Attachment
-            </button>
-          </div>
-        </section>
+          </section>
+        )}
 
-        {/* Filter chips row */}
-        <section className="filtersRow">
-          {["Order", "Sales", "Taxes", "Active product", "Categories", "Out of stock"].map(
-            (x) => (
-              <button key={x} className="chip">
-                {x} <span className="chipCaret">▾</span>
-              </button>
-            )
-          )}
-        </section>
+        {loading && !metrics && (
+          <section className="dashboardLoading">
+            <div className="dashboardSpinner" aria-hidden />
+            <p>Loading metrics…</p>
+          </section>
+        )}
 
-        {/* Chart + Right widget */}
-        <section className="grid2">
-          <div className="panel">
-            <div className="panelHeader">
-              <div>
-                <div className="panelTitle">Performance</div>
-                <div className="panelSub">Statistics Sales</div>
-              </div>
-
-              <div className="panelControls">
-                <button className="chip chipSmall">
-                  Monthly <span className="chipCaret">▾</span>
-                </button>
-                <button className="chip chipSmall">
-                  This years <span className="chipCaret">▾</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Fake chart (SVG) */}
-            <div className="chartBox">
-              <svg
-                className="chartSvg"
-                viewBox="0 0 900 260"
-                preserveAspectRatio="none"
-              >
-                {/* grid */}
-                {[...Array(6)].map((_, i) => (
-                  <line
-                    key={i}
-                    x1="0"
-                    y1={20 + i * 40}
-                    x2="900"
-                    y2={20 + i * 40}
-                    className="gridLine"
-                  />
-                ))}
-                {/* lines */}
-                <path
-                  d="M0,210 C120,110 180,170 260,140 C360,95 420,120 520,80 C620,45 700,90 780,70 C830,55 860,40 900,20"
-                  className="lineA"
-                />
-                <path
-                  d="M0,230 C110,160 200,210 290,175 C360,150 440,165 540,135 C640,120 720,135 800,110 C840,95 870,90 900,55"
-                  className="lineB"
-                />
-                <path
-                  d="M0,240 C120,190 200,235 280,210 C350,195 440,210 520,180 C640,165 720,160 820,130 C860,120 880,115 900,85"
-                  className="lineC"
-                />
-              </svg>
-
-              <div className="chartAxis">
-                <span>Jan 12</span>
-                <span>Feb 23</span>
-                <span>Mar 14</span>
-                <span>Apr 29</span>
-                <span>May 17</span>
-                <span>Jun 9</span>
-                <span>Jul 24</span>
-                <span>Aug 25</span>
-                <span>Sep 2</span>
-                <span>Oct 10</span>
-                <span>Nov 10</span>
-                <span>Dec 21</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel dotted">
-            <div className="panelHeader">
-              <div className="panelTitle">Out of stock</div>
-              <button className="kebab" aria-label="menu">
-                ⋯
-              </button>
-            </div>
-
-            <div className="notice">
-              <div className="noticeTitle">There is a problem with order</div>
-              <div className="noticeText">
-                Unfortunately, there are no longer enough stocks of the following
-                items as you placed and the items have been removed as required.
-              </div>
-
-              <div className="miniTable">
-                <div className="miniTableHead">
-                  <span>Product</span>
-                  <span>Previous Qty</span>
-                  <span>New Qty</span>
+        {!loading && metrics && (
+          <section className="topCards dashboardMetricsGrid">
+            {METRIC_CARDS.map((card) => (
+              <div key={card.key} className="miniCard dashboardMetricCard">
+                <div className="miniCardTop">
+                  <div className="miniCardTitle">{card.title}</div>
                 </div>
-                <div className="miniTableRow">
-                  <span>Dressing Table and Chair</span>
-                  <span>1</span>
-                  <span>0</span>
+                <div className="dashboardMetricValue">
+                  {formatValue(metrics[card.key], card.format)}
                 </div>
+                <div className="miniCardSub">{card.subtitle}</div>
               </div>
-
-              <div className="ctaBox">
-                <div className="ctaIcon">＋</div>
-                <div className="ctaText">
-                  Please add your favorite product <br />
-                  <a href="#browse" onClick={(e) => e.preventDefault()}>
-                    click to browse
-                  </a>
-                </div>
-              </div>
-
-              <div className="ctaRow">
-                <button className="ghostBtn">Back to Shop</button>
-                <button className="primaryBtn">Continue</button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Table */}
-        <section className="panel tablePanel">
-          <div className="tableHeader">
-            <div className="tableTitle">Recent RFPs</div>
-            <div className="tableControls">
-              <button className="chip chipSmall">
-                Action Products <span className="chipCaret">▾</span>
-              </button>
-              <button className="chip chipSmall">
-                100 <span className="chipCaret">▾</span>
-              </button>
-              <div className="pager">
-                <button className="pagerBtn" aria-label="prev">
-                  ‹
-                </button>
-                <button className="pagerBtn" aria-label="next">
-                  ›
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="tableWrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th className="wCheck"></th>
-                  <th className="wId">#</th>
-                  <th>RFP / Name</th>
-                  <th>Type</th>
-                  <th>Category</th>
-                  <th>Ref</th>
-                  <th>—</th>
-                  <th>—</th>
-                  <th>Channel</th>
-                  <th>Status</th>
-                  <th>Source</th>
-                  <th className="wEdit"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map((r, idx) => (
-                  <tr key={r.id}>
-                    <td className="wCheck">
-                      <input type="checkbox" defaultChecked={idx === 0 || idx === 3} />
-                    </td>
-                    <td className="wId">{r.id}</td>
-                    <td className="prodCell">
-                      <div className="prodIcon" />
-                      <div className="prodName">{r.name}</div>
-                    </td>
-                    <td>{r.type}</td>
-                    <td>{r.cat}</td>
-                    <td>{r.sku}</td>
-                    <td>{r.price}</td>
-                    <td>{r.qty}</td>
-                    <td>{r.channel}</td>
-                    <td>
-                      <span className="pill">{r.status}</span>
-                    </td>
-                    <td>{r.source}</td>
-                    <td className="wEdit">
-                      <button className="linkBtn">Edit</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+            ))}
+          </section>
+        )}
       </>
     </AppShell>
   );

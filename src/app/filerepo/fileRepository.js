@@ -72,7 +72,7 @@ function KebabMenu({ file, onAction }) {
         <div className="frMenu" onMouseLeave={() => setOpen(false)}>
           {canOpen && <button onClick={() => onAction("open")}>Open</button>}
           {canDownload && <button onClick={() => onAction("download")}>Download</button>}
-          <button onClick={() => onAction("rename")}>Rename</button>
+          <button onClick={() => onAction("edit")}>Edit metadata</button>
           <button className="danger" onClick={() => onAction("delete")}>
             Delete
           </button>
@@ -259,6 +259,105 @@ function FileDetailView({ file, onClose }) {
   );
 }
 
+function EditDocumentModal({ file, onSave, onClose }) {
+  const [docTitle, setDocTitle] = useState(file?.doc_title ?? "");
+  const [docDescription, setDocDescription] = useState(file?.doc_description ?? "");
+  const [docType, setDocType] = useState(file?.doc_type ?? "");
+  const [tagsStr, setTagsStr] = useState(() => {
+    try {
+      const t = file?.tags_json ? JSON.parse(file.tags_json) : null;
+      return Array.isArray(t) ? t.join(", ") : "";
+    } catch {
+      return "";
+    }
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const tags = tagsStr.trim() ? tagsStr.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      await onSave({
+        doc_title: docTitle.trim() || null,
+        doc_description: docDescription.trim() || null,
+        doc_type: docType.trim() || null,
+        tags: tags.length > 0 ? tags : null,
+      });
+      onClose();
+    } catch (err) {
+      setSaveError(err.message || "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-label="Edit document metadata">
+      <div className="frAddFilePanel">
+        <div className="frFileDetailHeader">
+          <h2 className="frFileDetailTitle">Edit metadata</h2>
+          <button type="button" className="frFileDetailClose" onClick={onClose} aria-label="Close" disabled={saving}>✕</button>
+        </div>
+        <form className="frAddFileBody" onSubmit={handleSubmit} style={{ padding: 16 }}>
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="edit-doc-title">Title</label>
+            <input
+              id="edit-doc-title"
+              type="text"
+              className="frTrainInput"
+              value={docTitle}
+              onChange={(e) => setDocTitle(e.target.value)}
+              placeholder="Document title"
+            />
+          </div>
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="edit-doc-desc">Description</label>
+            <textarea
+              id="edit-doc-desc"
+              className="frTrainInput"
+              rows={3}
+              value={docDescription}
+              onChange={(e) => setDocDescription(e.target.value)}
+              placeholder="Short description"
+            />
+          </div>
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="edit-doc-type">Doc type</label>
+            <input
+              id="edit-doc-type"
+              type="text"
+              className="frTrainInput"
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              placeholder="e.g. scope, terms, compliance"
+            />
+          </div>
+          <div className="frTrainField">
+            <label className="frSmallLabel" htmlFor="edit-doc-tags">Tags (comma-separated)</label>
+            <input
+              id="edit-doc-tags"
+              type="text"
+              className="frTrainInput"
+              value={tagsStr}
+              onChange={(e) => setTagsStr(e.target.value)}
+              placeholder="technical, security, 2025"
+            />
+          </div>
+          {saveError && <div className="frTrainSubmitError" role="alert">{saveError}</div>}
+          <div className="frAddFileFooter" style={{ marginTop: 16 }}>
+            <button type="button" className="frAddFileCancel" onClick={onClose} disabled={saving}>Cancel</button>
+            <button type="submit" className="frPrimaryBtn" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>
+      <div className="frFileDetailBackdrop" onClick={onClose} aria-hidden="true" />
+    </div>
+  );
+}
+
 const DEFAULT_CHUNK_SIZE = 200;
 const DEFAULT_CHUNK_OVERLAP = 30;
 const EMBEDDING_OPTIONS = [
@@ -415,6 +514,7 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
   const fileInputRef = useRef(null);
   const [visibility, setVisibility] = useState("open_for_all");
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [extractPdfImages, setExtractPdfImages] = useState(true);
 
   function onBrowseClick() {
     fileInputRef.current?.click();
@@ -439,7 +539,7 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
 
   function handleUpload() {
     if (selectedFiles.length === 0) return;
-    onUpload(selectedFiles, visibility);
+    onUpload(selectedFiles, visibility, extractPdfImages);
   }
 
   function handleClose() {
@@ -471,6 +571,18 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
             </select>
+          </div>
+
+          <div className="frTrainField frTrainCheckboxWrap" style={{ marginTop: 16 }}>
+            <label className="frTrainCheckboxLabel">
+              <input
+                type="checkbox"
+                checked={extractPdfImages}
+                onChange={(e) => setExtractPdfImages(e.target.checked)}
+                className="frTrainCheckbox"
+              />
+              <span>Extract text from images in PDFs (for scanned documents)</span>
+            </label>
           </div>
 
           <div
@@ -542,6 +654,7 @@ export default function FileRepository() {
   const [completed, setCompleted] = useState(false);
   const [lastAssignedCluster, setLastAssignedCluster] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [editFile, setEditFile] = useState(null);
   const [uploadAccessLevel, setUploadAccessLevel] = useState("open_for_all");
   const [selectedProjectId, setSelectedProjectId] = useState(null);
 
@@ -564,10 +677,16 @@ export default function FileRepository() {
   }, []);
 
   const fetchDocuments = useCallback(async () => {
+    if (selectedProjectId == null) {
+      setDocuments([]);
+      return;
+    }
     try {
-      const list = await documentsApi.list(selectedProjectId, 0, 500);
-      setDocuments(list);
+      const list = await projectsApi.listDocuments(selectedProjectId, 0, 500);
+      setDocuments(list ?? []);
+      setError(null);
     } catch (e) {
+      setDocuments([]);
       setError(e.message);
     }
   }, [selectedProjectId]);
@@ -610,7 +729,7 @@ export default function FileRepository() {
     fileInputRef.current?.click();
   }
 
-  async function processUpload(files, accessLevelOverride, onDone) {
+  async function processUpload(files, accessLevelOverride, onDone, extractPdfImages = true) {
     if (!files || files.length === 0) return;
     const projId = selectedProjectId ?? projects[0]?.id;
     if (!projId || !user?.id) {
@@ -633,7 +752,7 @@ export default function FileRepository() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         setProgress(10 + Math.round((i / files.length) * 80));
-        const res = await documentsApi.upload(projId, user.id, file);
+        const res = await documentsApi.upload(projId, user.id, file, { extractPdfImages });
         docIds.push(res.id);
         const doc = await documentsApi.get(res.id);
         clusters.push(doc.cluster || "Integrations");
@@ -697,6 +816,16 @@ export default function FileRepository() {
       {selectedFile && (
         <FileDetailView file={selectedFile} onClose={() => setSelectedFile(null)} />
       )}
+      {editFile && (
+        <EditDocumentModal
+          file={editFile}
+          onSave={async (body) => {
+            await documentsApi.update(editFile.documentId, body);
+            fetchDocuments();
+          }}
+          onClose={() => setEditFile(null)}
+        />
+      )}
       {error && (
         <div className="frError" role="alert" style={{ padding: 12, background: "#fee", color: "#c00", marginBottom: 16, borderRadius: 8 }}>
           {error}
@@ -705,7 +834,7 @@ export default function FileRepository() {
       {showAddFileModal && (
         <AddFileModal
           onClose={() => setShowAddFileModal(false)}
-          onUpload={(files, accessLevel) => processUpload(files, accessLevel, () => setShowAddFileModal(false))}
+          onUpload={(files, accessLevel, extractPdfImages) => processUpload(files, accessLevel, () => setShowAddFileModal(false), extractPdfImages)}
           uploading={uploading}
           progress={progress}
         />
@@ -726,6 +855,27 @@ export default function FileRepository() {
           <div>
             <h1 className="frTitle">Repository</h1>
             <p className="frSubtitle">Semantic clusters — documents auto-assigned by meaning</p>
+            {projects.length > 0 && (
+              <label className="frProjectSelectWrap" style={{ display: "inline-flex", alignItems: "center", marginTop: 8, gap: 8 }}>
+                <span className="frProjectSelectLabel" style={{ fontSize: 14, color: "#666" }}>RFP Project</span>
+                <select
+                  className="frProjectSelect"
+                  value={selectedProjectId ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    setSelectedProjectId(v);
+                    if (!v) setDocuments([]);
+                  }}
+                  aria-label="Select project to view documents"
+                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ccc", minWidth: 200 }}
+                >
+                  <option value="">Select project…</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name || p.id}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <div className="frHeaderActions">
             <button type="button" className="frTrainDatasourceBtn" onClick={() => setShowTrainDatasourceModal(true)}>
@@ -886,6 +1036,18 @@ export default function FileRepository() {
                         }
                       } catch {
                         /* ignore */
+                      }
+                    } else if (action === "edit") {
+                      setEditFile(r);
+                    } else if (action === "delete") {
+                      if (!window.confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
+                      try {
+                        await documentsApi.delete(r.documentId);
+                        setError(null);
+                        fetchDocuments();
+                        if (selectedFile?.documentId === r.documentId) setSelectedFile(null);
+                      } catch (e) {
+                        setError(e.message || "Delete failed");
                       }
                     }
                   }}

@@ -142,7 +142,7 @@
 
 /* Table */
 .aiTableWrap {
-  overflow-x: auto;
+  overflow-x: scroll;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);

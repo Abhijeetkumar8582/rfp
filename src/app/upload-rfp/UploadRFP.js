@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../context/AuthContext";
-import { rfpQuestions as rfpQuestionsApi, activity as activityApi } from "../../lib/api";
+import { rfpQuestions as rfpQuestionsApi, activity as activityApi, search as searchApi, projects as projectsApi, rephrase as rephraseApi } from "../../lib/api";
 import "../css/dashboard.css";
 import "./UploadRFP.css";
 
@@ -18,60 +18,10 @@ const IconDoc = () => (
     <line x1="10" y1="9" x2="8" y2="9" />
   </svg>
 );
-const IconDraft = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-  </svg>
-);
-const IconApproval = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 12a9 9 0 1 1-6.22-8.56" />
-    <polyline points="21 3 12 12 9 9" />
-  </svg>
-);
-const IconSent = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="22" y1="2" x2="11" y2="13" />
-    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-  </svg>
-);
-const IconViewed = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>
-);
-const IconSuggest = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
-    <path d="M9 18h6" />
-    <path d="M10 22h4" />
-  </svg>
-);
-const IconCompleted = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-    <polyline points="22 4 12 14.01 9 11.01" />
-  </svg>
-);
-const IconExpired = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="15" y1="9" x2="9" y2="15" />
-    <line x1="9" y1="9" x2="15" y2="15" />
-  </svg>
-);
 
 const docTabs = [
   { id: "all", label: "All RFPs", icon: IconDoc },
-  { id: "draft", label: "Draft", icon: IconDraft },
-  { id: "approval", label: "For Approval", icon: IconApproval },
-  { id: "sent", label: "Sent", icon: IconSent },
-  { id: "viewed", label: "Viewed", icon: IconViewed },
-  { id: "suggest", label: "Suggest Edits", icon: IconSuggest },
-  { id: "completed", label: "Sign Completed", icon: IconCompleted },
-  { id: "expired", label: "Expired/Declined", icon: IconExpired },
+  
 ];
 
 /** Map tab id to API status filter (null = all). */
@@ -106,6 +56,224 @@ const statusPillClass = (status) => {
   if (s === "expired") return "docPill docPillExpired";
   return "docPill";
 };
+
+const VIEW_RFP_PAGE_SIZE = 10;
+
+/** Modal to view a single RFP (questions/answers) — fetches by rfpid, shows table. Inline edit for one answer at a time. */
+function ViewRfpModal({ rfpid, onClose }) {
+  const [rfp, setRfp] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [saveError, setSaveError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [rephrasing, setRephrasing] = useState(false);
+  const [rephraseError, setRephraseError] = useState(null);
+  const [viewRfpPage, setViewRfpPage] = useState(1);
+
+  useEffect(() => {
+    if (!rfpid) {
+      setRfp(null);
+      setLoading(false);
+      setEditingIndex(null);
+      setViewRfpPage(1);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setEditingIndex(null);
+    setViewRfpPage(1);
+    rfpQuestionsApi.get(rfpid)
+      .then((data) => {
+        setRfp(data);
+        setError(null);
+      })
+      .catch((err) => setError(err?.message || "Failed to load RFP"))
+      .finally(() => setLoading(false));
+  }, [rfpid]);
+
+  const startEdit = (i, currentAnswer) => {
+    setEditingIndex(i);
+    setEditDraft(currentAnswer ?? "");
+    setSaveError(null);
+    setRephraseError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    setSaveError(null);
+    setRephraseError(null);
+  };
+
+  const handleRephrase = async () => {
+    const text = (editDraft || "").trim();
+    if (!text || editingIndex == null) return;
+    const question = (questions[editingIndex] ?? "").trim() || "Question";
+    setRephraseError(null);
+    setRephrasing(true);
+    try {
+      const res = await rephraseApi.rephrase(question, text);
+      setEditDraft(res.rephrased_answer ?? text);
+    } catch (err) {
+      setRephraseError(err?.message || "Rephrase failed");
+    } finally {
+      setRephrasing(false);
+    }
+  };
+
+  const saveEdit = async () => {
+    if (rfp == null || editingIndex == null) return;
+    const questions = Array.isArray(rfp.questions) ? rfp.questions : [];
+    const answers = Array.isArray(rfp.answers) ? rfp.answers : [];
+    const newAnswers = questions.map((_, idx) =>
+      idx === editingIndex ? editDraft : (answers[idx] ?? "")
+    );
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await rfpQuestionsApi.updateAnswers(rfpid, newAnswers);
+      setRfp({ ...rfp, answers: newAnswers });
+      setEditingIndex(null);
+    } catch (err) {
+      setSaveError(err?.message || "Failed to save answer");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!rfpid) return null;
+  const recipients = (rfp && Array.isArray(rfp.recipients) ? rfp.recipients : []);
+  const questions = (rfp && Array.isArray(rfp.questions) ? rfp.questions : []);
+  const answers = (rfp && Array.isArray(rfp.answers) ? rfp.answers : []);
+  const totalViewRfpPages = Math.max(1, Math.ceil(questions.length / VIEW_RFP_PAGE_SIZE));
+  const viewRfpStart = (viewRfpPage - 1) * VIEW_RFP_PAGE_SIZE;
+  const viewRfpEnd = Math.min(viewRfpStart + VIEW_RFP_PAGE_SIZE, questions.length);
+  const rowIndices = [];
+  for (let i = viewRfpStart; i < viewRfpEnd; i++) rowIndices.push(i);
+
+  return (
+    <div className="uploadModalOverlay" role="dialog" aria-modal="true" aria-label="RFP details">
+      <div className="uploadModalBackdrop" onClick={onClose} aria-hidden="true" />
+      <div className="uploadModalPanel questionsModalPanel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 960 }}>
+        <div className="uploadModalHeader questionsModalHeader">
+          <h2>{rfp?.name ?? "RFP"}</h2>
+          <button type="button" className="uploadModalClose" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="uploadModalBody questionsModalBody" style={{ padding: "16px 24px" }}>
+          {loading && <div className="docEmptyState">Loading…</div>}
+          {error && <div className="uploadModalError" style={{ marginBottom: 12 }}>{error}</div>}
+          {!loading && rfp && (
+            <>
+              <dl style={{ margin: "0 0 16px", display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 14 }}>
+                <dt style={{ color: "#666" }}>Created</dt>
+                <dd style={{ margin: 0 }}>{formatDate(rfp.created_at)}</dd>
+                <dt style={{ color: "#666" }}>Last activity</dt>
+                <dd style={{ margin: 0 }}>{formatDate(rfp.last_activity_at)}</dd>
+                <dt style={{ color: "#666" }}>Status</dt>
+                <dd style={{ margin: 0 }}><span className={statusPillClass(rfp.status)}>{rfp.status}</span></dd>
+                {recipients.length > 0 && (<><dt style={{ color: "#666" }}>Recipients</dt><dd style={{ margin: 0 }}>{recipients.join(", ")}</dd></>)}
+              </dl>
+              {questions.length > 0 ? (
+                <div className="questionsTableWrap" style={{ marginTop: 16 }}>
+                  <table className="questionsTable">
+                    <thead>
+                      <tr>
+                        <th className="questionsThQuestion">Question</th>
+                        <th className="questionsThAnswer">Answer</th>
+                        <th className="questionsThActions">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rowIndices.map((i) => (
+                        <tr key={i}>
+                          <td className="questionsTdQuestion">{questions[i]}</td>
+                          <td className="questionsTdAnswer">
+                            {editingIndex === i ? (
+                              <div className="viewRfpEditAnswerWrap">
+                                <textarea
+                                  className="viewRfpEditAnswerInput"
+                                  value={editDraft}
+                                  onChange={(e) => setEditDraft(e.target.value)}
+                                  placeholder="Enter answer…"
+                                  rows={4}
+                                  autoFocus
+                                />
+                                {saveError && <div className="uploadModalError" style={{ marginTop: 8, marginBottom: 8 }}>{saveError}</div>}
+                                {rephraseError && <div className="uploadModalError" style={{ marginTop: 8, marginBottom: 8 }}>{rephraseError}</div>}
+                                <div className="viewRfpEditAnswerActions">
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <button type="button" className="ghostBtn" onClick={cancelEdit} disabled={saving}>Cancel</button>
+                                    <button type="button" className="primaryBtn primaryBtnPurple" onClick={saveEdit} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+                                  </div>
+                                  <div className="viewRfpRephraseWrap" title="Rephrase text">
+                                    <button
+                                      type="button"
+                                      className="viewRfpRephraseBtn"
+                                      title="Rephrase text"
+                                      onClick={handleRephrase}
+                                      disabled={saving || rephrasing || !(editDraft || "").trim()}
+                                      aria-label="Rephrase text"
+                                    >
+                                      {rephrasing ? (
+                                        <span className="viewRfpRephraseSpinner" aria-hidden>⟳</span>
+                                      ) : (
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              answers[i] ?? "—"
+                            )}
+                          </td>
+                          <td className="questionsTdActions">
+                            {editingIndex === i ? null : (
+                              <button type="button" className="docViewLink" onClick={() => startEdit(i, answers[i])}>Edit</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {questions.length > VIEW_RFP_PAGE_SIZE && (
+                    <div className="questionsPagination" style={{ marginTop: 12 }}>
+                      <button
+                        type="button"
+                        className="ghostBtn questionsPageBtn"
+                        disabled={viewRfpPage <= 1}
+                        onClick={() => setViewRfpPage((p) => Math.max(1, p - 1))}
+                      >
+                        Previous
+                      </button>
+                      <span className="questionsPageInfo">
+                        Page {viewRfpPage} of {totalViewRfpPages} ({questions.length} questions)
+                      </span>
+                      <button
+                        type="button"
+                        className="ghostBtn questionsPageBtn"
+                        disabled={viewRfpPage >= totalViewRfpPages}
+                        onClick={() => setViewRfpPage((p) => Math.min(totalViewRfpPages, p + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="docEmptyState" style={{ marginTop: 16 }}>No questions in this RFP.</div>
+              )}
+              <div className="uploadModalActions" style={{ marginTop: 20 }}>
+                <button type="button" className="ghostBtn" onClick={onClose}>Close</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PAGE_SIZE = 10;
 
@@ -174,6 +342,27 @@ export default function UploadRFP() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [questionsPage, setQuestionsPage] = useState(1);
   const bulkFileInputRef = useRef(null);
+
+  const [bulkProjects, setBulkProjects] = useState([]);
+  const [bulkProjectId, setBulkProjectId] = useState(null);
+  const [generatingAnswers, setGeneratingAnswers] = useState(false);
+  const [generateError, setGenerateError] = useState("");
+  const [generatingIndex, setGeneratingIndex] = useState(0);
+
+  // My RFPs table: view single RFP modal, 3-dot menu open state (rfpid)
+  const [rfpViewRfpid, setRfpViewRfpid] = useState(null);
+  const [openKebabRfpid, setOpenKebabRfpid] = useState(null);
+  const kebabRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (kebabRef.current && !kebabRef.current.contains(e.target)) setOpenKebabRfpid(null);
+    }
+    if (openKebabRfpid != null) {
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }
+  }, [openKebabRfpid]);
 
   function openUploadBulk() {
     setUploadError("");
@@ -297,6 +486,68 @@ export default function UploadRFP() {
     setBulkQuestions([]);
     setCurrentRfpid(null);
     setQuestionsPage(1);
+    setGenerateError("");
+    setGeneratingAnswers(false);
+  }
+
+  useEffect(() => {
+    if (showQuestionsModal && bulkProjects.length === 0) {
+      projectsApi.list().then((list) => {
+        setBulkProjects(list ?? []);
+        if (list?.length && bulkProjectId == null) setBulkProjectId(list[0].id);
+      }).catch(() => setBulkProjects([]));
+    }
+  }, [showQuestionsModal]);
+
+  async function handleGenerateAnswers() {
+    const projectId = bulkProjectId ?? bulkProjects[0]?.id;
+    if (projectId == null) {
+      setGenerateError("Select a project to search. Add projects and documents in File Repository first.");
+      return;
+    }
+    if (bulkQuestions.length === 0) {
+      setGenerateError("No questions to generate answers for.");
+      return;
+    }
+    setGenerateError("");
+    setGeneratingAnswers(true);
+    const answers = [];
+    for (let i = 0; i < bulkQuestions.length; i++) {
+      setGeneratingIndex(i + 1);
+      const row = bulkQuestions[i];
+      const q = (row.question || "").trim();
+      if (!q) {
+        answers.push(row.answer ?? "");
+        continue;
+      }
+      try {
+        const res = await searchApi.answer(q, projectId, 10);
+        const answer = res?.answer ?? "";
+        answers.push(answer);
+        setBulkQuestions((prev) =>
+          prev.map((item) =>
+            item.id === row.id ? { ...item, answer } : item
+          )
+        );
+      } catch (err) {
+        const msg = err?.message || "Search failed.";
+        answers.push(`[Error: ${msg}]`);
+        setBulkQuestions((prev) =>
+          prev.map((item) =>
+            item.id === row.id ? { ...item, answer: `[Error: ${msg}]` } : item
+          )
+        );
+      }
+    }
+    if (currentRfpid && answers.length > 0) {
+      try {
+        await rfpQuestionsApi.updateAnswers(currentRfpid, answers);
+      } catch (err) {
+        setGenerateError(err?.message || "Failed to save answers to the server.");
+      }
+    }
+    setGeneratingAnswers(false);
+    setGeneratingIndex(0);
   }
 
   const totalPages = Math.max(1, Math.ceil(bulkQuestions.length / PAGE_SIZE));
@@ -422,8 +673,41 @@ export default function UploadRFP() {
                     <span className={statusPillClass(doc.status)}>{doc.status}</span>
                   </td>
                   <td className="docTdActions">
-                    <button type="button" className="docViewLink">View</button>
-                    <button type="button" className="kebab docKebab" aria-label="More actions">⋯</button>
+                    <button type="button" className="docViewLink" onClick={() => setRfpViewRfpid(doc.rfpid)}>View</button>
+                    <div className="docKebabWrap" ref={openKebabRfpid === doc.rfpid ? kebabRef : null} style={{ position: "relative", display: "inline-block" }}>
+                      <button
+                        type="button"
+                        className="kebab docKebab"
+                        aria-label="More actions"
+                        aria-expanded={openKebabRfpid === doc.rfpid}
+                        onClick={(e) => { e.stopPropagation(); setOpenKebabRfpid((prev) => (prev === doc.rfpid ? null : doc.rfpid)); }}
+                      >
+                        ⋯
+                      </button>
+                      {openKebabRfpid === doc.rfpid && (
+                        <div className="docKebabDropdown" role="menu">
+                          <button
+                            type="button"
+                            className="docKebabItem docKebabItemDanger"
+                            role="menuitem"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+                              try {
+                                await rfpQuestionsApi.delete(doc.rfpid);
+                                setOpenKebabRfpid(null);
+                                if (rfpViewRfpid === doc.rfpid) setRfpViewRfpid(null);
+                                fetchRfps();
+                              } catch (err) {
+                                setListError(err?.message || "Delete failed");
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
@@ -431,6 +715,10 @@ export default function UploadRFP() {
           </tbody>
         </table>
       </div>
+      {rfpViewRfpid && (
+        <ViewRfpModal rfpid={rfpViewRfpid} onClose={() => setRfpViewRfpid(null)} />
+      )}
+
       {!loading && totalDocs > 0 && (
         <div className="questionsPagination" style={{ marginTop: 16, justifyContent: "center", display: "flex", alignItems: "center", gap: 12 }}>
           <button
@@ -506,13 +794,37 @@ export default function UploadRFP() {
             <div className="uploadModalHeader questionsModalHeader">
               <h2>Bulk Questions</h2>
               <div className="questionsModalHeaderRight">
-                <button type="button" className="primaryBtn primaryBtnPurple" onClick={() => { /* Generate answer – for now no-op */ }}>
-                  Generate answer
+                {bulkProjects.length > 0 && (
+                  <label className="questionsModalProjectWrap" style={{ marginRight: 12 }}>
+                    <span className="questionsModalProjectLabel" style={{ marginRight: 6, fontSize: 14 }}>Project</span>
+                    <select
+                      className="docSelect"
+                      value={bulkProjectId ?? ""}
+                      onChange={(e) => setBulkProjectId(e.target.value ? Number(e.target.value) : null)}
+                      disabled={generatingAnswers}
+                      aria-label="Project to search"
+                    >
+                      {bulkProjects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <button
+                  type="button"
+                  className="primaryBtn primaryBtnPurple"
+                  onClick={handleGenerateAnswers}
+                  disabled={generatingAnswers || bulkQuestions.length === 0}
+                >
+                  {generatingAnswers
+                    ? `Generating ${generatingIndex}/${bulkQuestions.length}…`
+                    : "Generate answer"}
                 </button>
                 <button type="button" className="uploadModalClose" onClick={closeQuestionsModal} aria-label="Close">✕</button>
               </div>
             </div>
             <div className="questionsModalBody">
+              {generateError && <div className="uploadModalError" style={{ marginBottom: 12 }}>{generateError}</div>}
               <div className="questionsTableWrap">
                 <table className="questionsTable">
                   <thead>

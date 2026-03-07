@@ -116,6 +116,59 @@ function IconChevronRight() {
   );
 }
 
+function IconThumbsUp() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" />
+    </svg>
+  );
+}
+
+function IconThumbsDown() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+    </svg>
+  );
+}
+
+function IconClose() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function IconSettings() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+const MIN_SEGMENT = 5;
+
+function clampPcts(textPct, vectorPct, rerankPct) {
+  let t = Math.max(MIN_SEGMENT, Math.round(textPct));
+  let v = Math.max(MIN_SEGMENT, Math.round(vectorPct));
+  let r = Math.max(MIN_SEGMENT, Math.round(rerankPct));
+  const sum = t + v + r;
+  if (sum !== 100) {
+    const diff = 100 - sum;
+    if (diff > 0) r += diff;
+    else if (diff < 0) {
+      if (r + diff >= MIN_SEGMENT) r += diff;
+      else if (v + diff >= MIN_SEGMENT) v += diff;
+      else t += diff;
+    }
+  }
+  return { textPct: t, vectorPct: v, rerankPct: r };
+}
+
 export default function SearchSection() {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
@@ -123,11 +176,22 @@ export default function SearchSection() {
   const [hasSearched, setHasSearched] = useState(false);
   const [language, setLanguage] = useState("en");
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
+  const [searchSettingsOpen, setSearchSettingsOpen] = useState(false);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [reasoningAnswerEnabled, setReasoningAnswerEnabled] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [reasoningLog, setReasoningLog] = useState([]);
+  const [userFeedback, setUserFeedback] = useState(null);
+  const [feedbackPopupOpen, setFeedbackPopupOpen] = useState(false);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState(null); /* 0-9 for "How likely..." */
+  const [balance, setBalance] = useState({ textPct: 30, vectorPct: 60, rerankPct: 10 });
+  const balanceRef = React.useRef(null);
+  const draggingHandleRef = React.useRef(null);
+  const { textPct, vectorPct, rerankPct } = balance;
 
   useEffect(() => {
     projectsApi.list().then((list) => {
@@ -137,6 +201,46 @@ export default function SearchSection() {
       }
     }).catch(() => {});
   }, []);
+
+  const updateBalanceFromX = React.useCallback((clientX, handleIndex) => {
+    const el = balanceRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const pct = Math.round(x * 100);
+    setBalance((prev) => {
+      let t = prev.textPct, v = prev.vectorPct, r = prev.rerankPct;
+      if (handleIndex === 1) {
+        t = Math.max(MIN_SEGMENT, Math.min(100 - 2 * MIN_SEGMENT, pct));
+        r = Math.max(MIN_SEGMENT, 100 - t - v);
+        v = 100 - t - r;
+      } else {
+        const vectorEnd = Math.max(prev.textPct + MIN_SEGMENT, Math.min(100 - MIN_SEGMENT, pct));
+        v = vectorEnd - prev.textPct;
+        r = 100 - vectorEnd;
+      }
+      return clampPcts(t, v, r);
+    });
+  }, []);
+
+  const handleBalanceMouseDown = React.useCallback((e, handleIndex) => {
+    e.preventDefault();
+    draggingHandleRef.current = handleIndex;
+    const onMove = (ev) => {
+      if (draggingHandleRef.current === handleIndex) {
+        updateBalanceFromX(ev.clientX, handleIndex);
+      }
+    };
+    const onUp = () => {
+      draggingHandleRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [updateBalanceFromX]);
+
+  const displayPcts = clampPcts(textPct, vectorPct, rerankPct);
 
   const languages = [
     { code: "en", label: "English" },
@@ -152,16 +256,45 @@ export default function SearchSection() {
     const q = (query || "").trim();
     if (!q) return;
     if (selectedProjectId == null) {
-      setSearchError("Select a project to search.");
+      setSearchError("Select a project to search. Open Settings (gear icon) to choose a project.");
       return;
     }
     setSubmittedQuery(q);
     setHasSearched(true);
     setSearchError(null);
     setSearchResults(null);
+    setUserFeedback(null);
+    setFeedbackPopupOpen(false);
+    setFeedbackComment("");
+    setFeedbackRating(null);
+    setReasoningLog([]);
     setSearchLoading(true);
     try {
-      const res = await searchApi.answer(q, selectedProjectId, 10);
+      let res;
+      if (reasoningAnswerEnabled) {
+        res = await searchApi.reasoningStream(q, selectedProjectId, { k: 20, top_k: 12 }, {
+          onEvent: ({ type, data }) => {
+            if (type === "status" && data?.message) {
+              setReasoningLog((prev) => [...prev, { kind: "status", text: data.message }]);
+            } else if (type === "query_analysis") {
+              const parts = [];
+              if (data?.intent) parts.push(`Intent: ${data.intent}`);
+              if (data?.domain) parts.push(`Domain: ${data.domain}`);
+              if (data?.answer_type) parts.push(`Answer type: ${data.answer_type}`);
+              if (parts.length) setReasoningLog((prev) => [...prev, { kind: "analysis", text: parts.join(", ") }]);
+            } else if (type === "search_query" && data?.query) {
+              const suffix = data.total > 1 ? ` (${data.index}/${data.total})` : "";
+              setReasoningLog((prev) => [...prev, { kind: "query", text: `Generated question: ${data.query}${suffix}` }]);
+            } else if (type === "confidence" && data) {
+              const pct = typeof data.overall === "number" ? Math.round(data.overall * 100) : data.overall;
+              setReasoningLog((prev) => [...prev, { kind: "confidence", text: `Confidence: ${pct}%` }]);
+            }
+          },
+        });
+        setReasoningLog([]);
+      } else {
+        res = await searchApi.answer(q, selectedProjectId, 10);
+      }
       setSearchResults(res);
       activityApi.create({
         actor: user?.name || user?.email || "User",
@@ -173,8 +306,46 @@ export default function SearchSection() {
     } catch (err) {
       setSearchError(err.message || "Search failed.");
       setSearchResults(null);
+      setReasoningLog([]);
     } finally {
       setSearchLoading(false);
+    }
+  }
+
+  async function handleThumbsUp() {
+    const id = searchResults?.search_query_id;
+    if (!id) return;
+    try {
+      await searchApi.submitFeedback(id, { feedback_status: "positive", feedback_score: 1 });
+      setUserFeedback("positive");
+    } catch (e) {
+      console.warn("Feedback failed:", e);
+    }
+  }
+
+  function handleThumbsDown() {
+    setFeedbackPopupOpen(true);
+  }
+
+  function closeFeedbackPopup() {
+    setFeedbackPopupOpen(false);
+    setFeedbackComment("");
+    setFeedbackRating(null);
+  }
+
+  async function handleFeedbackSubmit() {
+    const id = searchResults?.search_query_id;
+    if (!id) return;
+    try {
+      await searchApi.submitFeedback(id, {
+        feedback_status: "negative",
+        feedback_score: feedbackRating != null ? feedbackRating : -1,
+        feedback_text: feedbackComment.trim() || undefined,
+      });
+      setUserFeedback("negative");
+      closeFeedbackPopup();
+    } catch (e) {
+      console.warn("Feedback failed:", e);
     }
   }
 
@@ -200,56 +371,129 @@ export default function SearchSection() {
       <header className="searchPageTopHeader">
         <h1 className="searchPageBotName">RFP Assistant</h1>
         <div className="searchPageHeaderRight">
-          {projects.length > 0 && (
-            <label className="searchPageProjectWrap">
-              <span className="searchPageProjectLabel">Project</span>
-              <select
-                className="searchPageProjectSelect"
-                value={selectedProjectId ?? ""}
-                onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : null)}
-                aria-label="Project to search"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
+          <label className="searchPageReasoningToggle">
+            <span className="searchPageReasoningLabel">Reasoning Answer</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={reasoningAnswerEnabled}
+              className={`searchPageReasoningSwitch ${reasoningAnswerEnabled ? "searchPageReasoningSwitchOn" : ""}`}
+              onClick={() => setReasoningAnswerEnabled((v) => !v)}
+            >
+              <span className="searchPageReasoningKnob" />
+            </button>
+          </label>
           <div className="searchPageLangWrap">
-          <button
-            type="button"
-            className="searchPageLangTrigger"
-            onClick={() => setLanguageDropdownOpen((o) => !o)}
-            aria-expanded={languageDropdownOpen}
-            aria-haspopup="listbox"
-            aria-label="Select language"
-          >
-            <span className="searchPageLangLabel">{currentLanguageLabel}</span>
-            <svg className="searchPageLangChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          {languageDropdownOpen && (
-            <>
-              <div className="searchPageLangBackdrop" onClick={() => setLanguageDropdownOpen(false)} aria-hidden="true" />
-              <ul className="searchPageLangDropdown" role="listbox">
-                {languages.map(({ code, label }) => (
-                  <li key={code} role="option" aria-selected={language === code}>
-                    <button
-                      type="button"
-                      className={`searchPageLangOption ${language === code ? "searchPageLangOptionActive" : ""}`}
-                      onClick={() => {
-                        setLanguage(code);
-                        setLanguageDropdownOpen(false);
-                      }}
+            <button
+              type="button"
+              className="searchPageLangTrigger"
+              onClick={() => setLanguageDropdownOpen((o) => !o)}
+              aria-expanded={languageDropdownOpen}
+              aria-haspopup="listbox"
+              aria-label="Select language"
+            >
+              <span className="searchPageLangLabel">{currentLanguageLabel}</span>
+              <svg className="searchPageLangChevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {languageDropdownOpen && (
+              <>
+                <div className="searchPageLangBackdrop" onClick={() => setLanguageDropdownOpen(false)} aria-hidden="true" />
+                <ul className="searchPageLangDropdown" role="listbox">
+                  {languages.map(({ code, label }) => (
+                    <li key={code} role="option" aria-selected={language === code}>
+                      <button
+                        type="button"
+                        className={`searchPageLangOption ${language === code ? "searchPageLangOptionActive" : ""}`}
+                        onClick={() => {
+                          setLanguage(code);
+                          setLanguageDropdownOpen(false);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+          <div className="searchPageSettingsWrap">
+            <button
+              type="button"
+              className="searchPageSettingsTrigger searchPageSettingsIconOnly"
+              onClick={() => setSearchSettingsOpen((o) => !o)}
+              aria-expanded={searchSettingsOpen}
+              aria-label="Search settings"
+            >
+              <IconSettings />
+            </button>
+            {searchSettingsOpen && (
+              <>
+                <div className="searchSettingsBackdrop" onClick={() => setSearchSettingsOpen(false)} aria-hidden="true" />
+                <div className="searchSettingsPanel" role="dialog" aria-label="Search settings">
+                  {projects.length > 0 && (
+                    <div className="searchSettingsProjectRow">
+                      <label className="searchSettingsProjectLabel">Project to search</label>
+                      <select
+                        className="searchSettingsProjectSelect"
+                        value={selectedProjectId ?? ""}
+                        onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : null)}
+                        aria-label="Project to search"
+                      >
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="searchSettingsPanelTitle">Search balance</div>
+                  <p className="searchSettingsPanelHint">Drag the handles left or right to set weights (total 100%).</p>
+                  <div className="searchSettingsBalanceWrap">
+                    <div
+                      className="searchSettingsBalanceBar"
+                      ref={balanceRef}
                     >
-                      {label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+                      <div className="searchSettingsBalanceSegment searchSettingsBalanceText" style={{ flex: `0 0 ${displayPcts.textPct}%` }} />
+                      <div className="searchSettingsBalanceSegment searchSettingsBalanceVector" style={{ flex: `0 0 ${displayPcts.vectorPct}%` }} />
+                      <div className="searchSettingsBalanceSegment searchSettingsBalanceRerank" style={{ flex: `0 0 ${displayPcts.rerankPct}%` }} />
+                      <div
+                        className="searchSettingsBalanceHandle"
+                        style={{ left: `${displayPcts.textPct}%` }}
+                        onMouseDown={(e) => handleBalanceMouseDown(e, 1)}
+                        role="slider"
+                        aria-valuenow={displayPcts.textPct}
+                        aria-valuemin={MIN_SEGMENT}
+                        aria-valuemax={100 - 2 * MIN_SEGMENT}
+                        aria-label="Text search boundary"
+                      />
+                      <div
+                        className="searchSettingsBalanceHandle"
+                        style={{ left: `${displayPcts.textPct + displayPcts.vectorPct}%` }}
+                        onMouseDown={(e) => handleBalanceMouseDown(e, 2)}
+                        role="slider"
+                        aria-valuenow={displayPcts.textPct + displayPcts.vectorPct}
+                        aria-valuemin={displayPcts.textPct + MIN_SEGMENT}
+                        aria-valuemax={100 - MIN_SEGMENT}
+                        aria-label="Vector search boundary"
+                      />
+                    </div>
+                    <div className="searchSettingsBalanceLabels">
+                      <span className="searchSettingsBalanceLabelItem" style={{ width: `${displayPcts.textPct}%` }}>
+                        Text {displayPcts.textPct}%
+                      </span>
+                      <span className="searchSettingsBalanceLabelItem searchSettingsBalanceLabelVector" style={{ width: `${displayPcts.vectorPct}%` }}>
+                        Vector {displayPcts.vectorPct}%
+                      </span>
+                      <span className="searchSettingsBalanceLabelItem searchSettingsBalanceLabelRerank" style={{ width: `${displayPcts.rerankPct}%` }}>
+                        Rerank {displayPcts.rerankPct}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -276,8 +520,27 @@ export default function SearchSection() {
                 <IconStar />
               </div>
               <div className="searchBardResponseBody">
-                {searchLoading && (
-                  <p className="searchBardIntro">Searching your documents and generating an answer with GPT…</p>
+                {searchLoading && !reasoningAnswerEnabled && (
+                  <p className="searchBardIntro">
+                    Searching your documents and generating an answer with GPT…
+                  </p>
+                )}
+                {reasoningLog.length > 0 && (
+                  <div className="searchReasoningLog" role="log" aria-live="polite">
+                    <div className="searchReasoningLogTitle">Reasoning</div>
+                    <div className="searchReasoningLogLines">
+                      {reasoningLog.map((entry, i) => (
+                        <div key={i} className={`searchReasoningLogLine searchReasoningLogLine_${entry.kind}`}>
+                          {entry.text}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {searchLoading && reasoningAnswerEnabled && reasoningLog.length === 0 && (
+                  <p className="searchBardIntro">
+                    Running agentic reasoning (query analysis, multi-search, reranking, synthesis)…
+                  </p>
                 )}
                 {searchError && (
                   <p className="searchBardSearchError" role="alert">{searchError}</p>
@@ -287,9 +550,85 @@ export default function SearchSection() {
                     {searchResults.answer != null && searchResults.answer !== "" && (
                       <div className="searchBardAnswerWrap">
                         <p className="searchBardAnswer">{searchResults.answer}</p>
-                        <button type="button" className="searchBardActionBtn searchBardCopyAll" onClick={handleCopyResults} title="Copy answer and sources">
-                          <IconCopy /> Copy all
-                        </button>
+                        {searchResults.uncertainty_note && (
+                          <p className="searchBardUncertainty">Note: {searchResults.uncertainty_note}</p>
+                        )}
+                        {searchResults.missing_info_note && (
+                          <p className="searchBardMissingInfo">Missing info: {searchResults.missing_info_note}</p>
+                        )}
+                        {searchResults.clarification_suggested && (
+                          <p className="searchBardClarification">Consider rephrasing or clarifying your question.</p>
+                        )}
+                        <div className="searchBardAnswerActions">
+                          {searchResults.search_query_id != null && (
+                            <div className="searchBardFeedbackBtns">
+                              <button
+                                type="button"
+                                className={`searchBardFeedbackBtn ${userFeedback === "positive" ? "searchBardFeedbackBtnActive" : ""}`}
+                                onClick={handleThumbsUp}
+                                title="Helpful"
+                                aria-label="Helpful"
+                              >
+                                <IconThumbsUp />
+                              </button>
+                              <button
+                                type="button"
+                                className={`searchBardFeedbackBtn ${userFeedback === "negative" ? "searchBardFeedbackBtnActive" : ""}`}
+                                onClick={handleThumbsDown}
+                                title="Not helpful"
+                                aria-label="Not helpful"
+                              >
+                                <IconThumbsDown />
+                              </button>
+                            </div>
+                          )}
+                          <button type="button" className="searchBardActionBtn searchBardCopyAll" onClick={handleCopyResults} title="Copy answer and sources">
+                            <IconCopy /> Copy all
+                          </button>
+                        </div>
+                        {feedbackPopupOpen && (
+                          <>
+                            <div className="searchBardFeedbackBackdrop" onClick={closeFeedbackPopup} aria-hidden="true" />
+                            <div className="searchBardFeedbackPopup" role="dialog" aria-label="Feedback">
+                              <button type="button" className="searchBardFeedbackPopupClose" onClick={closeFeedbackPopup} aria-label="Close">
+                                <IconClose />
+                              </button>
+                              <h3 className="searchBardFeedbackPopupTitle">How likely are you to answer to this question?</h3>
+                              <div className="searchBardFeedbackScale">
+                                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                                  <button
+                                    key={n}
+                                    type="button"
+                                    className={`searchBardFeedbackScaleBtn ${feedbackRating === n ? "searchBardFeedbackScaleBtnSelected" : ""}`}
+                                    onClick={() => setFeedbackRating(n)}
+                                  >
+                                    {n}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="searchBardFeedbackScaleLabels">
+                                <span>Not likely at all</span>
+                                <span>Extremely likely</span>
+                              </div>
+                              <h4 className="searchBardFeedbackImproveTitle">Tell us how we can improve</h4>
+                              <textarea
+                                className="searchBardFeedbackTextarea"
+                                placeholder="Write your message here"
+                                value={feedbackComment}
+                                onChange={(e) => setFeedbackComment(e.target.value)}
+                                rows={3}
+                              />
+                              <div className="searchBardFeedbackPopupActions">
+                                <button type="button" className="searchBardFeedbackPopupCancel" onClick={closeFeedbackPopup}>
+                                  Skip
+                                </button>
+                                <button type="button" className="searchBardFeedbackPopupSubmit" onClick={handleFeedbackSubmit}>
+                                  Submit
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                     <div className="searchBardIntro">

@@ -144,21 +144,115 @@
   gap: 16px;
 }
 
-.searchPageProjectWrap {
+/* Reasoning Answer toggle */
+.searchPageReasoningToggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 14px;
   font-weight: 500;
   color: var(--muted, #5f6368);
+  cursor: pointer;
 }
 
-.searchPageProjectLabel {
+.searchPageReasoningLabel {
   white-space: nowrap;
 }
 
-.searchPageProjectSelect {
-  padding: 8px 12px;
+.searchPageReasoningSwitch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 12px;
+  background: #e8eaed;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.searchPageReasoningSwitch:hover {
+  border-color: #b0b4b8;
+}
+
+.searchPageReasoningSwitch.searchPageReasoningSwitchOn {
+  background: #1a73e8;
+  border-color: #1a73e8;
+}
+
+.searchPageReasoningKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.searchPageReasoningSwitch.searchPageReasoningSwitchOn .searchPageReasoningKnob {
+  transform: translateX(20px);
+}
+
+/* Project selector in settings panel */
+.searchSettingsProjectRow {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, #e8eaed);
+}
+
+.searchSettingsProjectLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #202124);
+  margin-bottom: 8px;
+}
+
+.searchSettingsProjectSelect {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #dadce0);
+  border-radius: 10px;
+  background: var(--panel);
+  color: #000;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.searchSettingsProjectSelect:hover,
+.searchSettingsProjectSelect:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+/* Reasoning-specific notes in answer */
+.searchBardUncertainty,
+.searchBardMissingInfo,
+.searchBardClarification {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5f6368;
+}
+
+.searchBardClarification {
+  color: #ea4335;
+}
+
+/* ----- Search Settings button and panel ----- */
+.searchPageSettingsWrap {
+  position: relative;
+}
+
+.searchPageSettingsTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
   border: 1px solid var(--border, #dadce0);
   border-radius: 10px;
   background: var(--panel);
@@ -167,13 +261,140 @@
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  min-width: 140px;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.searchPageProjectSelect:hover,
-.searchPageProjectSelect:focus {
+.searchPageSettingsTrigger:hover {
+  border-color: #b0b4b8;
+  background: #f8f9fa;
+}
+
+.searchPageSettingsTrigger:focus {
   outline: none;
   border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+.searchPageSettingsTrigger[aria-expanded="true"] {
+  border-color: #1a73e8;
+  background: rgba(26, 115, 232, 0.08);
+}
+
+.searchPageSettingsTrigger.searchPageSettingsIconOnly {
+  padding: 8px;
+}
+
+.searchPageSettingsTrigger.searchPageSettingsIconOnly svg {
+  display: block;
+}
+
+.searchSettingsBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: transparent;
+}
+
+.searchSettingsPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 320px;
+  max-width: 400px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border, #e8eaed);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.searchSettingsPanelTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000;
+  margin: 0 0 6px;
+}
+
+.searchSettingsPanelHint {
+  font-size: 13px;
+  color: var(--muted, #5f6368);
+  margin: 0 0 16px;
+  line-height: 1.4;
+}
+
+.searchSettingsBalanceWrap {
+  width: 100%;
+}
+
+.searchSettingsBalanceBar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 1px;
+  overflow: visible;
+  background: #dadce0;
+}
+
+.searchSettingsBalanceSegment {
+  min-width: 2px;
+}
+
+.searchSettingsBalanceText {
+  background: #34a853;
+}
+
+.searchSettingsBalanceVector {
+  background: #1a73e8;
+}
+
+.searchSettingsBalanceRerank {
+  background: #ea4335;
+}
+
+.searchSettingsBalanceHandle {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  margin-left: 0;
+  background: #fff;
+  border: 1px solid #1a73e8;
+  border-radius: 50%;
+  cursor: ew-resize;
+  z-index: 2;
+}
+
+.searchSettingsBalanceHandle:hover {
+  background: #f8f9fa;
+}
+
+.searchSettingsBalanceHandle:active {
+  background: #e8f0fe;
+}
+
+.searchSettingsBalanceLabels {
+  display: flex;
+  width: 100%;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text, #202124);
+}
+
+.searchSettingsBalanceLabelItem {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.searchSettingsBalanceLabelVector {
+  color: #1a73e8;
+}
+
+.searchSettingsBalanceLabelRerank {
+  color: #c5221f;
 }
 
 /* Search results (ChromaDB vector search) */
@@ -181,6 +402,50 @@
   color: #c5221f;
   font-weight: 500;
   margin: 0 0 12px;
+}
+
+/* Reasoning stream log (small div, show while streaming; hide when answer arrives) */
+.searchReasoningLog {
+  margin-bottom: 16px;
+  max-height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--border, #e8eaed);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.searchReasoningLogTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5f6368;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border, #e8eaed);
+}
+
+.searchReasoningLogLines {
+  padding: 8px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.searchReasoningLogLine {
+  margin: 4px 0;
+  color: var(--text, #202124);
+}
+
+.searchReasoningLogLine_status {
+  color: #5f6368;
+}
+
+.searchReasoningLogLine_query {
+  font-weight: 500;
+}
+
+.searchReasoningLogLine_confidence {
+  color: #1a73e8;
+  font-weight: 500;
 }
 
 .searchBardCopyAll {
@@ -355,7 +620,7 @@
   padding-top: 2px;
 }
 
-/* ----- Response section (AI chat bubble) ----- */
+/* ----- Response section (AI chat bubble) — clean rounded box, icon row below ----- */
 .searchBardResponse {
   margin-bottom: 28px;
 }
@@ -364,11 +629,11 @@
   display: flex;
   align-items: flex-start;
   gap: 16px;
-  padding: 20px 22px;
-  background: var(--panel);
-  border-radius: 20px;
-  border: 1px solid #e8eaed;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 24px 26px;
+  background: #fff;
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .searchBardResponseAvatar {
@@ -394,25 +659,25 @@
   min-width: 0;
 }
 
-/* GPT answer block (RAG) */
+/* Answer block: light background, generous padding, no gradient */
 .searchBardAnswerWrap {
   margin-bottom: 20px;
-  padding: 16px 18px;
+  padding: 20px 22px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #f0f7ff 0%, #e8f0fe 100%);
-  border: 1px solid rgba(26, 115, 232, 0.2);
+  background: #fafbfc;
+  border: 1px solid #e8eaed;
 }
 
 .searchBardAnswer {
-  margin: 0 0 12px 0;
+  margin: 0 0 16px 0;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.65;
   color: var(--text, #202124);
   white-space: pre-wrap;
 }
 
 .searchBardAnswerWrap .searchBardActionBtn {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 /* Intro line: text + version link + speaker */
@@ -525,16 +790,119 @@
   color: #5f6368;
 }
 
-/* Action buttons row */
+/* Action row: small grey icons (copy, thumbs up/down) below answer */
 .searchBardActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchBardActionBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9aa0a6;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.searchBardActionBtn:hover {
+  background: #f1f3f4;
+  color: #5f6368;
+}
+
+.searchBardActionBtn.searchBardCopyAll {
+  width: auto;
+  height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+  color: #9aa0a6;
+}
+
+/* ----- Feedback: thumbs up/down + icon row ----- */
+.searchBardAnswerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 2px;
+}
+
+.searchBardFeedbackBtns {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.searchBardActionBtn {
-  width: 40px;
-  height: 40px;
+.searchBardFeedbackBtn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9aa0a6;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.searchBardFeedbackBtn:hover {
+  background: #f1f3f4;
+  color: #5f6368;
+}
+
+.searchBardFeedbackBtnActive {
+  background: rgba(26, 115, 232, 0.1);
+  color: #1a73e8;
+}
+
+.searchBardFeedbackBtnActive.searchBardFeedbackBtn:last-of-type {
+  color: #d93025;
+  background: rgba(217, 48, 37, 0.08);
+}
+
+/* ----- Feedback modal: "How likely..." 0-9 scale + comment ----- */
+.searchBardFeedbackBackdrop,
+.searchFeedbackBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.searchBardFeedbackPopup,
+.searchFeedbackPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90%;
+  max-width: 440px;
+  padding: 24px 28px 28px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  z-index: 101;
+}
+
+.searchBardFeedbackPopupClose,
+.searchFeedbackPopupClose {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: none;
   background: transparent;
   color: #5f6368;
@@ -546,9 +914,149 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.searchBardActionBtn:hover {
+.searchBardFeedbackPopupClose:hover,
+.searchFeedbackPopupClose:hover {
   background: #f1f3f4;
   color: #202124;
+}
+
+.searchBardFeedbackPopupTitle,
+.searchFeedbackPopupTitle {
+  margin: 0 0 16px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #202124;
+  padding-right: 28px;
+}
+
+.searchBardFeedbackScale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.searchBardFeedbackScaleBtn {
+  flex: 1;
+  min-width: 36px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #202124;
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.searchBardFeedbackScaleBtn:hover {
+  border-color: #b0b4b8;
+  background: #f8f9fa;
+}
+
+.searchBardFeedbackScaleBtnSelected {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+}
+
+.searchBardFeedbackScaleLabels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  font-size: 12px;
+  color: #9aa0a6;
+}
+
+.searchBardFeedbackImproveTitle,
+.searchFeedbackPopupImproveTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #202124;
+}
+
+.searchBardFeedbackTextarea,
+.searchFeedbackPopupTextarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  border: 1px solid #dadce0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  color: #202124;
+}
+
+.searchBardFeedbackTextarea::placeholder,
+.searchFeedbackPopupTextarea::placeholder {
+  color: #9aa0a6;
+  font-style: italic;
+}
+
+.searchBardFeedbackTextarea:focus,
+.searchFeedbackPopupTextarea:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+.searchBardFeedbackPopupHint,
+.searchFeedbackPopupHint {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #5f6368;
+}
+
+.searchBardFeedbackPopupActions,
+.searchFeedbackPopupActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.searchBardFeedbackPopupCancel,
+.searchFeedbackPopupCancel {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #5f6368;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.searchBardFeedbackPopupCancel:hover,
+.searchFeedbackPopupCancel:hover {
+  color: #202124;
+}
+
+.searchBardFeedbackPopupSubmit,
+.searchFeedbackPopupSubmit {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.searchBardFeedbackPopupSubmit:hover,
+.searchFeedbackPopupSubmit:hover {
+  background: #1557b0;
 }
 
 /* ----- Footer: fixed searchbar (always at bottom) ----- */
