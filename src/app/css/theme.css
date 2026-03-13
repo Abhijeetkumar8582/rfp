@@ -1,0 +1,344 @@
+/**
+ * RFP Automate — Global theme (single source of truth).
+ * Colors, typography scale, and global utility classes.
+ *
+ * COLOR ROLE          | Variable(s)        | Use
+ * --------------------|--------------------|------------------------------------------
+ * Primary (Navy)      | --primary, --brand | Trust, security, nav, sidebar, links
+ * Secondary (Slate)   | --secondary        | Neutrality, balance, muted text
+ * Accent / CTA        | --accent, --cta    | Urgency, action, primary buttons
+ * Success             | --success          | Growth, completion, success states
+ * Danger              | --danger           | Critical alerts, errors
+ *
+ * TYPOGRAPHY: Modular scale (1.25–1.33). Base 16px; all sizes in rem for WCAG scaling.
+ */
+
+/* -----------------------------------------------------------------------------
+   ROOT: Base font size for rem scaling (user preferences respected when possible)
+   ----------------------------------------------------------------------------- */
+html {
+  font-size: 16px; /* 1rem = 16px; allows full site to scale with browser settings */
+}
+
+:root {
+  /* ---- Font family ---- */
+  --font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* ---- Font weights (enterprise hierarchy) ---- */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semi-bold: 500;   /* Semi-bold (500) for labels, emphasis */
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---- Line heights (leading) ---- */
+  --line-height-tight: 1.2;   /* Headings */
+  --line-height-body: 1.5;    /* Body text (1.5x–1.6x for readability) */
+  --line-height-relaxed: 1.6;
+
+  /* ---- Typography scale (rem) — Desktop ---- */
+  /* H1: Primary page title (once per page) */
+  --text-h1: 2.5rem;           /* 40px */
+  --text-h1-min: 2rem;         /* 32px */
+  --text-h1-max: 3rem;         /* 48px */
+  /* H2: Major section headings */
+  --text-h2: 1.75rem;          /* 28px */
+  --text-h2-min: 1.5rem;      /* 24px */
+  --text-h2-max: 2rem;        /* 32px */
+  /* H3: Sub-sections */
+  --text-h3: 1.25rem;          /* 20px */
+  --text-h3-min: 1.25rem;
+  --text-h3-max: 1.5rem;      /* 24px */
+  /* H4: Detailed sub-sections */
+  --text-h4: 1.125rem;         /* 18px */
+  --text-h4-min: 1.125rem;
+  --text-h4-max: 1.25rem;     /* 20px */
+  /* Body */
+  --text-body: 1rem;           /* 16px — main content, dashboard default */
+  --text-body-large: 1.125rem; /* 18px — long-form / blogs */
+  /* Secondary: captions, labels, fine print */
+  --text-secondary: 0.875rem;  /* 14px */
+  --text-secondary-small: 0.8125rem; /* 13px */
+  /* Tables */
+  --text-table: 0.875rem;      /* 14px — standard */
+  --text-table-dense: 0.8125rem; /* 13px — high-density */
+  --text-table-header: 0.875rem;  /* 14px, use with font-weight 500/600 */
+  --text-table-min: 0.75rem;   /* 12px — minimum accessible */
+  /* Dashboard */
+  --text-kpi: 1.75rem;         /* 28px — "big number" (range 24–32px) */
+  --text-kpi-large: 2rem;     /* 32px */
+  --text-widget-title: 0.875rem; /* 14px — widget/chart card headers */
+  --text-widget-title-large: 1rem;
+  --text-chart-axis: 0.625rem;   /* 10px */
+  --text-chart-label: 0.6875rem; /* 11px */
+  --text-chart-caption: 0.625rem; /* 10px — legends, captions; min 10px */
+  /* Buttons */
+  --text-btn-primary: 1rem;    /* 16px — main action */
+  --text-btn-secondary: 0.875rem; /* 14px — secondary/tertiary */
+
+  /* Legacy tokens (map to new scale for backward compatibility) */
+  --font-size-base: var(--text-body);
+  --font-size-heading: var(--text-h3);
+  --font-size-heading-h4: var(--text-h4);
+  --font-weight-heading: var(--font-weight-bold);
+
+  /* ---- Palette (edit these to change the whole app) ---- */
+  --color-primary: #000080;
+  --color-primary-hover: #0000a0;
+  --color-secondary: #708090;
+  --color-accent: #CC5500;
+  --color-accent-hover: #e65c00;
+  --color-accent-glow: rgba(204, 85, 0, 0.35);
+  --color-accent-glow-hover: rgba(204, 85, 0, 0.4);
+  --color-success: #228B22;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #bbf7d0;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-danger-border: #fecaca;
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fef3c7;
+  --color-warning-border: #fde68a;
+  --color-info: #1d4ed8;
+  --color-info-bg: rgba(59, 130, 246, 0.12);
+  --color-info-border: rgba(59, 130, 246, 0.3);
+
+  /* ---- Semantic tokens (derived; optional overrides) ---- */
+  --primary: var(--color-primary);
+  --primary-hover: var(--color-primary-hover);
+  --secondary: var(--color-secondary);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --cta: var(--color-accent);
+  --cta-hover: var(--color-accent-hover);
+  --cta-glow: var(--color-accent-glow);
+  --cta-glow-hover: var(--color-accent-glow-hover);
+  --success: var(--color-success);
+  --success-bg: var(--color-success-bg);
+  --success-border: var(--color-success-border);
+  --danger: var(--color-danger);
+  --danger-bg: var(--color-danger-bg);
+  --danger-border: var(--color-danger-border);
+  --warning: var(--color-warning);
+  --warning-bg: var(--color-warning-bg);
+  --warning-border: var(--color-warning-border);
+  --info: var(--color-info);
+  --info-bg: var(--color-info-bg);
+  --info-border: var(--color-info-border);
+
+  /* Brand = Primary (Navy) for nav, sidebar, focus, links */
+  --brand: var(--color-primary);
+  --brand-hover: var(--color-primary-hover);
+  --brand-tint: rgba(0, 0, 128, 0.12);
+  --brand-border: rgba(0, 0, 128, 0.35);
+  --focus-ring: var(--color-primary);
+
+  /* UI neutrals (white space, readability) */
+  --text: #0f172a;
+  --muted: #708090;
+  --border: #e2e8f0;
+  --soft: #f1f5f9;
+  --panel: #ffffff;
+  --bg: #f8fafc;
+
+  /* Sidebar (dark navy for contrast) */
+  --sidebar-bg: #000033;
+  --sidebar-text: #ffffff;
+  --sidebar-muted: rgba(255, 255, 255, 0.65);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-active-bg: rgba(0, 0, 128, 0.5);
+  --sidebar-active-border: rgba(0, 0, 128, 0.6);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+/* -----------------------------------------------------------------------------
+   GLOBAL TYPOGRAPHY CLASSES — use theme variables; rem-based for accessibility
+   ----------------------------------------------------------------------------- */
+
+/* ---- Base ---- */
+body,
+.text-body {
+  font-family: var(--font-family);
+  font-size: var(--text-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-body);
+}
+
+.text-body-large {
+  font-size: var(--text-body-large);
+  line-height: var(--line-height-relaxed);
+}
+
+/* ---- Headings (one H1 per page; use classes for non-semantic headings) ---- */
+h1,
+.text-h1,
+.pageTitle {
+  font-size: var(--text-h1);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  font-family: var(--font-family);
+}
+
+h2,
+.text-h2 {
+  font-size: var(--text-h2);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  font-family: var(--font-family);
+}
+
+h3,
+.text-h3,
+.navGroupTitle,
+.tableTitle,
+.modalTitle,
+.panelTitle,
+.noticeTitle,
+.frTitle,
+.frClusterViewTitle,
+.frUploadTitle,
+.frStatusTitle,
+.frFileDetailTitle,
+.frMetaSectionTitle,
+.ihTitle,
+.ihCardTitle,
+.headerTitle,
+.cardTitle,
+.colTitle,
+.dashboardChartTitle,
+.apiConfigCardTitle,
+.searchPageBotName,
+.searchSettingsPanelTitle,
+.searchReasoningLogTitle,
+.searchBardSourcesTitle,
+.searchBardFeedbackPopupTitle,
+.searchFeedbackPopupTitle,
+.searchBardFeedbackImproveTitle,
+.searchFeedbackPopupImproveTitle,
+.searchReasoningLogLine_results_header,
+.endpointLogModalTitle,
+.conversationLogModalTitle,
+.conversationLogToolbarTitle,
+.conversationLogEmptyTitle {
+  font-size: var(--text-h3);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  font-family: var(--font-family);
+}
+
+h4,
+.text-h4,
+.miniCardTitle,
+.docCellTitle {
+  font-size: var(--text-h4);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  font-family: var(--font-family);
+}
+
+/* ---- Paragraph & secondary ---- */
+p,
+.text-paragraph {
+  font-size: var(--text-body);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-secondary,
+.text-caption,
+.text-label,
+.text-fine-print {
+  font-size: var(--text-secondary);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-body);
+}
+
+.text-secondary-small {
+  font-size: var(--text-secondary-small);
+}
+
+/* ---- Tables ---- */
+.text-table {
+  font-size: var(--text-table);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-table-dense {
+  font-size: var(--text-table-dense);
+}
+
+.text-table-header {
+  font-size: var(--text-table-header);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* ---- Dashboard: KPI, widgets, charts ---- */
+.text-kpi {
+  font-size: var(--text-kpi);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+}
+
+.text-kpi-large {
+  font-size: var(--text-kpi-large);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+}
+
+.text-widget-title {
+  font-size: var(--text-widget-title);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-widget-title-large {
+  font-size: var(--text-widget-title-large);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-chart-axis {
+  font-size: var(--text-chart-axis);
+  font-weight: var(--font-weight-regular);
+}
+
+.text-chart-label {
+  font-size: var(--text-chart-label);
+}
+
+.text-chart-caption,
+.text-legend {
+  font-size: var(--text-chart-caption);
+}
+
+/* ---- Buttons (sentence case in markup; these set size/weight) ---- */
+.text-btn-primary {
+  font-size: var(--text-btn-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-btn-secondary,
+.text-btn-tertiary {
+  font-size: var(--text-btn-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ---- Font weight utilities ---- */
+.font-regular { font-weight: var(--font-weight-regular); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-semi-bold { font-weight: var(--font-weight-semi-bold); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold { font-weight: var(--font-weight-bold); }
+
+/* ---- Mobile: reduce heading sizes; keep body at 16px ---- */
+@media (max-width: 768px) {
+  :root {
+    --text-h1: 2rem;       /* 32px */
+    --text-h2: 1.5rem;    /* 24px */
+    --text-h3: 1.25rem;   /* 20px */
+    --text-h4: 1.125rem;  /* 18px */
+  }
+}

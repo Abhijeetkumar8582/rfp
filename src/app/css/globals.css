@@ -1,26 +1,8 @@
-/* Unified RFP app theme — purple + lime */
+/* Base layout — colors come from theme.css (RFP Automate palette) */
 :root {
-  --background: #f7f7f7;
-  --foreground: #0f0f12;
-  /* Theme tokens (shared across all pages) */
-  --bg: #f5f4f9;
-  --bg-deep: #edeaf4;
-  --panel: #ffffff;
-  --text: #000;
-  --text-soft: #52525b;
-  --muted: #71717a;
-  --border: #e4e2ec;
-  --border-light: #f0eef6;
-  --soft: #f8f7fc;
-  --brand: #7c3aed;
-  --brand-hover: #6d28d9;
-  --brand-tint: rgba(124, 58, 237, 0.1);
-  --brand-border: rgba(124, 58, 237, 0.25);
-  --accent: #c0eb34;
-  --accent-hover: #b0d92e;
-  --shadow-sm: 0 1px 3px rgba(15, 15, 18, 0.05);
-  --shadow: 0 4px 16px rgba(15, 15, 18, 0.06);
-  --shadow-lg: 0 8px 32px rgba(15, 15, 18, 0.08);
+  --background: var(--bg, #f8fafc);
+  --foreground: var(--text, #0f172a);
+  --border-light: #f0f4f8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,12 +19,17 @@ body {
 }
 
 body {
-  color: #000;
+  color: var(--foreground);
   background: var(--background);
-  font-family: sans-serif;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Heading styles (h1–h4 and all section titles) are defined in theme.css */
 
 * {
   box-sizing: border-box;
@@ -61,8 +48,9 @@ a {
   }
 }
 .span {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-heading);
+  font-family: var(--font-family);
   color: #000;
   line-height: 1.5;
   text-align: left;

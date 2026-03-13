@@ -58,7 +58,15 @@ async function apiFetch(path, options = {}) {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(url, { ...options, headers });
+  let res;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err) {
+    if (err?.name === "TypeError" && err?.message?.toLowerCase?.().includes("fetch")) {
+      throw new Error(`Backend unreachable at ${API_BASE}. Is the server running?`);
+    }
+    throw err;
+  }
   if (res.status === 401) {
     const refresh = getRefreshToken();
     if (refresh) {
@@ -102,18 +110,29 @@ async function refreshAccessToken(refreshToken) {
     const data = await res.json();
     setTokens(data.access_token, data.refresh_token, data.user);
     return true;
-  } catch {
+  } catch (err) {
+    if (err?.name === "TypeError" && err?.message?.toLowerCase?.().includes("fetch")) {
+      return false; /* backend down */
+    }
     return false;
   }
 }
 
 // Auth (use raw fetch — no token, no 401 refresh logic)
 async function authFetch(path, body) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err?.name === "TypeError" && err?.message?.toLowerCase?.().includes("fetch")) {
+      throw new Error(`Backend unreachable at ${API_BASE}. Is the server running?`);
+    }
+    throw err;
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -153,6 +172,45 @@ export const auth = {
       }
     }
     clearTokens();
+  },
+};
+
+// Users — list from users table (requires auth)
+export const users = {
+  /**
+   * @param {{ skip?: number, limit?: number }} [params]
+   * @returns {Promise<Array<{ id: string, email: string, name: string, role: string, is_active: boolean, created_at: string }>>}
+   */
+  async list(params = {}) {
+    const { skip = 0, limit = 100 } = params;
+    const q = new URLSearchParams();
+    q.set("skip", String(skip));
+    q.set("limit", String(limit));
+    return apiFetch(`/api/v1/users?${q.toString()}`);
+  },
+
+  /** Get a single user by id. */
+  async get(userId) {
+    return apiFetch(`/api/v1/users/${encodeURIComponent(userId)}`);
+  },
+
+  /**
+   * Update user. Only provided fields are sent.
+   * @param {string} userId
+   * @param {{ name?: string, email?: string, role?: string, is_active?: boolean }} body
+   */
+  async update(userId, body) {
+    return apiFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  /** Deactivate user (soft delete). */
+  async delete(userId) {
+    return apiFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+    });
   },
 };
 
@@ -293,11 +351,14 @@ export const rfpQuestions = {
    * Update answers array for an RFP (same order as questions).
    * @param {string} rfpid - RFP id from import
    * @param {string[]} answers - Array of answer strings
+   * @param {number[]} [confidence] - Optional array of confidence values (0-1), one per question, same order
    */
-  async updateAnswers(rfpid, answers) {
+  async updateAnswers(rfpid, answers, confidence = null) {
+    const body = { answers };
+    if (confidence != null && Array.isArray(confidence)) body.confidence = confidence;
     return apiFetch(`/api/v1/rfp-questions/${encodeURIComponent(rfpid)}/answers`, {
       method: "PATCH",
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify(body),
     });
   },
 };
@@ -343,6 +404,34 @@ export const dashboard = {
     const q = params.toString() ? `?${params.toString()}` : "";
     return apiFetch(`/api/v1/analytics/dashboard-metrics${q}`);
   },
+
+  /**
+   * Chart data for dashboard: search volume, answer status, confidence trend, response time, feedback.
+   * @param {string} [projectId]
+   * @param {number} [days=28]
+   * @returns {Promise<{ search_volume_trend: Array<{date:string,count:number}>, answer_status_breakdown: Array<{status:string,count:number}>, confidence_trend: Array<{date:string,value:number}>, response_time_trend: Array<{date:string,value:number}>, feedback_sentiment: Array<{status:string,count:number}> }>}
+   */
+  async getChartData(projectId = null, days = 28) {
+    const params = new URLSearchParams();
+    if (projectId != null) params.set("project_id", String(projectId));
+    if (days != null) params.set("days", String(days));
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return apiFetch(`/api/v1/analytics/chart-data${q}`);
+  },
+
+  /**
+   * Questions that were not answered by the search (knowledge gaps).
+   * @param {string} [projectId]
+   * @param {number} [days=28]
+   * @returns {Promise<{ items: Array<{ query_text: string, ts: string, no_answer_reason: string|null }> }>}
+   */
+  async getKnowledgeGaps(projectId = null, days = 28) {
+    const params = new URLSearchParams();
+    if (projectId != null) params.set("project_id", String(projectId));
+    if (days != null) params.set("days", String(days));
+    const q = params.toString() ? `?${params.toString()}` : "";
+    return apiFetch(`/api/v1/analytics/knowledge-gaps${q}`);
+  },
 };
 
 // Search — question embedding vs ChromaDB document embeddings
@@ -351,12 +440,14 @@ export const search = {
    * @param {string} queryText - User question
    * @param {number} projectId - Project whose ChromaDB collection to search
    * @param {number} [k=5] - Top-k chunks to return
-   * @returns {{ query_text: string, project_id: number, k: number, results: Array<{ content: string, document_id: number, filename: string, chunk_index: number, distance: number, score: number }> }}
+   * @param {{ advanced_search?: boolean }} [opts] - advanced_search: enable Query Intelligence Layer (cleanup, intent, split, rewrite, domain, filters, clarification)
+   * @returns {{ query_text: string, project_id: number, k: number, results: Array<...>, advanced_search_used?, cleaned_query?, clarification_needed?, clarification_questions? }}
    */
-  async query(queryText, projectId, k = 5) {
+  async query(queryText, projectId, k = 5, opts = {}) {
+    const { advanced_search = false } = opts;
     return apiFetch("/api/v1/search/query", {
       method: "POST",
-      body: JSON.stringify({ query_text: queryText, project_id: projectId, k }),
+      body: JSON.stringify({ query_text: queryText, project_id: projectId, k, advanced_search }),
     });
   },
 
@@ -365,12 +456,14 @@ export const search = {
    * @param {string} queryText - User question
    * @param {number} projectId - Project whose ChromaDB collection to search
    * @param {number} [k=10] - Top-k chunks to retrieve and pass to GPT
-   * @returns {{ query_text: string, project_id: number, k: number, results: Array<...>, answer: string }}
+   * @param {{ advanced_search?: boolean }} [opts] - advanced_search: enable Query Intelligence Layer
+   * @returns {{ query_text: string, project_id: number, k: number, results: Array<...>, answer: string, advanced_search_used?, cleaned_query?, clarification_needed?, clarification_questions? }}
    */
-  async answer(queryText, projectId, k = 10) {
+  async answer(queryText, projectId, k = 10, opts = {}) {
+    const { advanced_search = false } = opts;
     return apiFetch("/api/v1/search/answer", {
       method: "POST",
-      body: JSON.stringify({ query_text: queryText, project_id: projectId, k }),
+      body: JSON.stringify({ query_text: queryText, project_id: projectId, k, advanced_search }),
     });
   },
 
@@ -379,10 +472,10 @@ export const search = {
    * evidence bundling, reranking, answer synthesis, self-check.
    * @param {string} queryText - User question
    * @param {number} projectId - Project whose ChromaDB collection to search
-   * @param {object} [opts] - Optional: k (retrieve count), top_k (after rerank), skip_self_check
+   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search (Query Intelligence Layer)
    */
   async reasoning(queryText, projectId, opts = {}) {
-    const { k = 20, top_k = 12, skip_self_check = false } = opts;
+    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false } = opts;
     return apiFetch("/api/v1/search/reasoning", {
       method: "POST",
       body: JSON.stringify({
@@ -391,6 +484,7 @@ export const search = {
         k,
         top_k,
         skip_self_check,
+        advanced_search,
       }),
     });
   },
@@ -399,9 +493,10 @@ export const search = {
    * Streaming reasoning: same as reasoning but returns Server-Sent Events.
    * Calls onEvent({ type, data }) for each event (status, query_analysis, search_query, confidence, result, error).
    * Resolves with the full result when event type is "result"; rejects on "error" or HTTP error.
+   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search
    */
   async reasoningStream(queryText, projectId, opts = {}, { onEvent } = {}) {
-    const { k = 20, top_k = 12, skip_self_check = false } = opts;
+    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false } = opts;
     const url = `${API_BASE}/api/v1/search/reasoning/stream`;
     const headers = {
       "Content-Type": "application/json",
@@ -409,17 +504,26 @@ export const search = {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        query_text: queryText,
-        project_id: projectId,
-        k,
-        top_k,
-        skip_self_check,
-      }),
-    });
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          query_text: queryText,
+          project_id: projectId,
+          k,
+          top_k,
+          skip_self_check,
+          advanced_search,
+        }),
+      });
+    } catch (err) {
+      if (err?.name === "TypeError" && err?.message?.toLowerCase?.().includes("fetch")) {
+        throw new Error(`Backend unreachable at ${API_BASE}. Is the server running?`);
+      }
+      throw err;
+    }
 
     if (res.status === 401) {
       const refresh = getRefreshToken();
@@ -543,6 +647,32 @@ export const search = {
   },
 };
 
+// Conversation log — search_queries table (list and get by id)
+export const searchQueries = {
+  /**
+   * List search queries for conversation log.
+   * @param {{ projectId?: string, skip?: number, limit?: number }} [params]
+   * @returns {Promise<Array<{ id: number, ts: string, project_id: string, query_text: string, answer: string|null, answer_status: string|null, topic: string|null, feedback_status: string|null, ... }>>}
+   */
+  async list(params = {}) {
+    const { projectId, skip = 0, limit = 100 } = params;
+    const q = new URLSearchParams();
+    if (skip != null) q.set("skip", String(skip));
+    if (limit != null) q.set("limit", String(limit));
+    if (projectId) q.set("project_id", projectId);
+    const query = q.toString();
+    return apiFetch(`/api/v1/search/queries${query ? `?${query}` : ""}`);
+  },
+
+  /**
+   * Get a single search query by id (for conversation log detail).
+   * @param {number} id
+   */
+  async get(id) {
+    return apiFetch(`/api/v1/search/queries/${id}`);
+  },
+};
+
 // Activity logs — list and create
 export const activity = {
   async list(params = {}) {
@@ -570,5 +700,24 @@ export const activity = {
         system: body.system ?? "web",
       }),
     });
+  },
+};
+
+// Endpoint logs — list and get by id
+export const endpointLogs = {
+  async list(params = {}) {
+    const { method, path, status_code, skip = 0, limit = 100 } = params;
+    const q = new URLSearchParams();
+    if (skip != null) q.set("skip", String(skip));
+    if (limit != null) q.set("limit", String(limit));
+    if (method) q.set("method", method);
+    if (path) q.set("path", path);
+    if (status_code != null) q.set("status_code", String(status_code));
+    const query = q.toString();
+    return apiFetch(`/api/v1/endpoint-logs${query ? `?${query}` : ""}`);
+  },
+
+  async get(id) {
+    return apiFetch(`/api/v1/endpoint-logs/${id}`);
   },
 };

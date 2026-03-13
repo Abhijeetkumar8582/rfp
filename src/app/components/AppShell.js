@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import "../css/theme.css";
 import "../css/dashboard.css";
 
 /* Small white outline icons for sidebar (20px) */
@@ -129,7 +130,7 @@ const settingsDropdownItems = [
   { href: "/settings/conversation-log", label: "Conversation Log", icon: IconConversation },
 ];
 
-const PROTECTED_PATHS = ["/dashboard", "/filerepo", "/search", "/upload-rfp", "/project", "/activitylog", "/accessintelligence", "/integration", "/settings"];
+const PROTECTED_PATHS = ["/dashboard", "/filerepo", "/search", "/upload-rfp", "/project", "/intelligence-hub", "/activitylog", "/accessintelligence", "/integration", "/settings"];
 
 export default function AppShell({ children, mainClassName = "main" }) {
   const pathname = usePathname();

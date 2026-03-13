@@ -94,28 +94,47 @@ export default function ApiConfigPage() {
       </header>
 
       <section className="apiConfigSection">
-        <div className="apiConfigCards">
+        <p className="apiConfigHint">Select one provider below. Only the selected provider will be used for chat and embeddings.</p>
+        <div className="apiConfigCards" role="radiogroup" aria-label="API provider selection">
           {PROVIDERS.map((p) => {
-            const isEnabled = enabledProvider === p.id;
+            const isSelected = enabledProvider === p.id;
             return (
               <div
                 key={p.id}
-                className={`apiConfigCard ${isEnabled ? "apiConfigCardSelected" : ""}`}
+                role="radio"
+                aria-checked={isSelected}
+                aria-label={`${p.label} — ${p.title}`}
+                tabIndex={0}
+                className={`apiConfigCard ${isSelected ? "apiConfigCardSelected" : ""}`}
                 onClick={() => openConfigModal(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openConfigModal(p.id);
+                  }
+                }}
               >
                 <div className="apiConfigCardInner">
                   <div className="apiConfigCardHead">
                     <span className="apiConfigCardTag">{p.tag}</span>
+                    <span className={`apiConfigRadioVisual ${isSelected ? "apiConfigRadioVisualSelected" : ""}`} aria-hidden>
+                      {isSelected && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="2 6 5 9 10 3" />
+                        </svg>
+                      )}
+                    </span>
                     <input
                       type="radio"
                       name="apiProvider"
-                      checked={isEnabled}
+                      checked={isSelected}
                       onChange={() => openConfigModal(p.id)}
                       onClick={(e) => e.stopPropagation()}
                       className="apiConfigRadio"
-                      aria-label={`Enable ${p.label}`}
+                      aria-label={`Select ${p.label}`}
                     />
                   </div>
+                  {isSelected && <span className="apiConfigSelectedBadge">Active</span>}
                   <h3 className="apiConfigCardTitle">{p.title}</h3>
                   <p className="apiConfigCardSubtitle">{p.subtitle}</p>
                   <p className="apiConfigCardDesc">{p.description}</p>

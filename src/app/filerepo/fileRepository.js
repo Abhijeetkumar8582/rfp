@@ -367,10 +367,9 @@ const EMBEDDING_OPTIONS = [
 ];
 
 function TrainDatasourceModal({ onClose, projectId, projectName, documentCount, projectsApi }) {
-  const [datasourceName, setDatasourceName] = useState("");
   const [chunkSize, setChunkSize] = useState(DEFAULT_CHUNK_SIZE);
   const [chunkOverlap, setChunkOverlap] = useState(DEFAULT_CHUNK_OVERLAP);
-  const [embeddingModel, setEmbeddingModel] = useState(EMBEDDING_OPTIONS[0].id);
+  const [embeddingModel] = useState(EMBEDDING_OPTIONS[0].id);
   const [includeMetadata, setIncludeMetadata] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState(null);
@@ -407,100 +406,76 @@ function TrainDatasourceModal({ onClose, projectId, projectName, documentCount, 
   }
 
   return (
-    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-label="Train datasource">
+    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-label="Train">
       <div className="frAddFilePanel frTrainDatasourcePanel">
         <div className="frFileDetailHeader">
-          <h2 className="frFileDetailTitle">Train datasource</h2>
+          <h2 className="frFileDetailTitle">Train</h2>
           <button type="button" className="frFileDetailClose" onClick={handleClose} aria-label="Close" disabled={submitting}>✕</button>
         </div>
 
-        <form className="frTrainDatasourceBody" onSubmit={handleSubmit}>
-          <p className="frHint frTrainDatasourceIntro">
-            Configure how this repository is used as a datasource for search and RAG. Settings apply to future ingestion; existing chunks use previous config.
-          </p>
+        <form className="frTrainDatasourceForm" onSubmit={handleSubmit}>
+          <div className="frTrainDatasourceBody">
+            <p className="frHint frTrainDatasourceIntro">
+              Configure how this repository is used as a datasource for search and RAG. Settings apply to future ingestion; existing chunks use previous config.
+            </p>
 
-          <div className="frTrainField">
-            <label className="frSmallLabel" htmlFor="train-datasource-name">Datasource name (optional)</label>
-            <input
-              id="train-datasource-name"
-              type="text"
-              className="frTrainInput"
-              value={datasourceName}
-              onChange={(e) => setDatasourceName(e.target.value)}
-              placeholder={projectName ? `${projectName} — ${documentCount} docs` : "My repository"}
-            />
-          </div>
-
-          <div className="frTrainFieldGroup">
-            <div className="frTrainField">
-              <label className="frSmallLabel" htmlFor="train-chunk-size">Words per chunk</label>
-              <input
-                id="train-chunk-size"
-                type="number"
-                min={50}
-                max={500}
-                step={50}
-                className="frTrainInput"
-                value={chunkSize}
-                onChange={(e) => setChunkSize(Number(e.target.value) || DEFAULT_CHUNK_SIZE)}
-              />
-              <span className="frTrainHint">Recommended: 150–250. Larger = fewer, longer chunks.</span>
+            <div className="frTrainFieldGroup">
+              <div className="frTrainField">
+                <label className="frSmallLabel" htmlFor="train-chunk-size">Words per chunk</label>
+                <input
+                  id="train-chunk-size"
+                  type="number"
+                  min={50}
+                  max={500}
+                  step={50}
+                  className="frTrainInput"
+                  value={chunkSize}
+                  onChange={(e) => setChunkSize(Number(e.target.value) || DEFAULT_CHUNK_SIZE)}
+                />
+                <span className="frTrainHint">Recommended: 150–250. Larger = fewer, longer chunks.</span>
+              </div>
+              <div className="frTrainField">
+                <label className="frSmallLabel" htmlFor="train-chunk-overlap">Overlap (words)</label>
+                <input
+                  id="train-chunk-overlap"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={10}
+                  className="frTrainInput"
+                  value={chunkOverlap}
+                  onChange={(e) => setChunkOverlap(Number(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
+                />
+                <span className="frTrainHint">Overlap between consecutive chunks for context.</span>
+              </div>
             </div>
-            <div className="frTrainField">
-              <label className="frSmallLabel" htmlFor="train-chunk-overlap">Overlap (words)</label>
-              <input
-                id="train-chunk-overlap"
-                type="number"
-                min={0}
-                max={100}
-                step={10}
-                className="frTrainInput"
-                value={chunkOverlap}
-                onChange={(e) => setChunkOverlap(Number(e.target.value) || DEFAULT_CHUNK_OVERLAP)}
-              />
-              <span className="frTrainHint">Overlap between consecutive chunks for context.</span>
+
+            <div className="frTrainField frTrainCheckboxWrap">
+              <label className="frTrainCheckboxLabel">
+                <input
+                  type="checkbox"
+                  checked={includeMetadata}
+                  onChange={(e) => setIncludeMetadata(e.target.checked)}
+                  className="frTrainCheckbox"
+                />
+                <span>Include GPT-generated metadata (title, tags, taxonomy) in retrieval</span>
+              </label>
             </div>
-          </div>
 
-          <div className="frTrainField">
-            <label className="frSmallLabel" htmlFor="train-embedding-model">Embedding model</label>
-            <select
-              id="train-embedding-model"
-              className="frVisibilitySelect frTrainSelect"
-              value={embeddingModel}
-              onChange={(e) => setEmbeddingModel(e.target.value)}
-            >
-              {EMBEDDING_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
-              ))}
-            </select>
+            {submitMessage && (
+              <div className="frTrainSubmitMessage" role="status">{submitMessage}</div>
+            )}
+            {submitError && (
+              <div className="frTrainSubmitError" role="alert">{submitError}</div>
+            )}
           </div>
-
-          <div className="frTrainField frTrainCheckboxWrap">
-            <label className="frTrainCheckboxLabel">
-              <input
-                type="checkbox"
-                checked={includeMetadata}
-                onChange={(e) => setIncludeMetadata(e.target.checked)}
-                className="frTrainCheckbox"
-              />
-              <span>Include GPT-generated metadata (title, tags, taxonomy) in retrieval</span>
-            </label>
-          </div>
-
-          {submitMessage && (
-            <div className="frTrainSubmitMessage" role="status">{submitMessage}</div>
-          )}
-          {submitError && (
-            <div className="frTrainSubmitError" role="alert">{submitError}</div>
-          )}
 
           <div className="frAddFileFooter">
             <button type="button" className="frAddFileCancel" onClick={handleClose} disabled={submitting}>
               Cancel
             </button>
             <button type="submit" className="frPrimaryBtn" disabled={submitting}>
-              {submitting ? "Starting…" : "Start training"}
+              {submitting ? "Applying…" : "Advance settings"}
             </button>
           </div>
         </form>
@@ -853,33 +828,12 @@ export default function FileRepository() {
       <div className="frHeader">
         <div className="frHeaderTop">
           <div>
-            <h1 className="frTitle">Repository</h1>
-            <p className="frSubtitle">Semantic clusters — documents auto-assigned by meaning</p>
-            {projects.length > 0 && (
-              <label className="frProjectSelectWrap" style={{ display: "inline-flex", alignItems: "center", marginTop: 8, gap: 8 }}>
-                <span className="frProjectSelectLabel" style={{ fontSize: 14, color: "#666" }}>RFP Project</span>
-                <select
-                  className="frProjectSelect"
-                  value={selectedProjectId ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value || null;
-                    setSelectedProjectId(v);
-                    if (!v) setDocuments([]);
-                  }}
-                  aria-label="Select project to view documents"
-                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ccc", minWidth: 200 }}
-                >
-                  <option value="">Select project…</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name || p.id}</option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <h1 className="frTitle">Contextual Document Segmentation</h1>
+            <p className="frSubtitle">Documents grouped by contextual meaning and topic similarity</p>
           </div>
           <div className="frHeaderActions">
             <button type="button" className="frTrainDatasourceBtn" onClick={() => setShowTrainDatasourceModal(true)}>
-              Train datasource
+              Train Data
             </button>
             <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
               <span className="frPlus">＋</span> Add new file
@@ -901,57 +855,6 @@ export default function FileRepository() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Cluster view — powered by vector similarity */}
-      <div className="frClusterView">
-        <h2 className="frClusterViewTitle">
-          Cluster view <span className="frClusterBadge">Powered by vector similarity</span>
-        </h2>
-        <div className="frClusterGrid">
-          {CLUSTERS.filter((c) => c !== "All").map((clusterName) => {
-            const count = allFiles.filter((f) => f.cluster === clusterName).length;
-            return (
-              <button
-                key={clusterName}
-                type="button"
-                className={`frClusterCard ${tab === clusterName ? "frClusterCardActive" : ""}`}
-                onClick={() => {
-                  setTab(clusterName);
-                  setPage(1);
-                }}
-              >
-                <span className="frClusterCardName">{clusterName}</span>
-                <span className="frClusterCardCount">{count}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="frControls">
-        <div className="frSearch">
-          <span className="frSearchIcon">🔎</span>
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search a folder"
-          />
-        </div>
-
-        <button className="frFilterBtn">
-          <span className="frFilterIcon">⏷</span> Filters
-        </button>
-
-        <div className="frSpacer" />
-
-        <button className="frPrimaryBtn">
-          <span className="frPlus">＋</span> Add a folder
-        </button>
       </div>
 
       {/* Table */}

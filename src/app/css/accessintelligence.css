@@ -1,13 +1,19 @@
 /* Access Intelligence — unified purple + lime theme */
 
+/* Hide scrollbars but keep scroll behavior */
 .aiPageWrap {
   width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.aiPageWrap::-webkit-scrollbar {
+  display: none;
 }
 
 .aiPage {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 20px 48px;
+  /* padding: 24px 20px 48px;/ */
 }
 
 .aiHeader {
@@ -16,8 +22,9 @@
 
 .aiTitle {
   margin: 0 0 8px;
-  font-size: 28px;
-  font-weight: 800;
+  font-size: var(--text-h2);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-family);
   letter-spacing: -0.03em;
   color: var(--text);
 }
@@ -142,11 +149,16 @@
 
 /* Table */
 .aiTableWrap {
-  overflow-x: scroll;
+  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--shadow-sm);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.aiTableWrap::-webkit-scrollbar {
+  display: none;
 }
 
 .aiTable {

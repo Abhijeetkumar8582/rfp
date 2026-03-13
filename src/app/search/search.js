@@ -150,6 +150,16 @@ function IconSettings() {
   );
 }
 
+function IconInfo() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  );
+}
+
 const MIN_SEGMENT = 5;
 
 function clampPcts(textPct, vectorPct, rerankPct) {
@@ -180,6 +190,9 @@ export default function SearchSection() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [reasoningAnswerEnabled, setReasoningAnswerEnabled] = useState(false);
+  const [advancedSearchEnabled, setAdvancedSearchEnabled] = useState(false);
+  const [infoReasoningOpen, setInfoReasoningOpen] = useState(false);
+  const [infoAdvanceOpen, setInfoAdvanceOpen] = useState(false);
   const [searchResults, setSearchResults] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
@@ -188,10 +201,18 @@ export default function SearchSection() {
   const [feedbackPopupOpen, setFeedbackPopupOpen] = useState(false);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [feedbackRating, setFeedbackRating] = useState(null); /* 0-9 for "How likely..." */
+  const [feedbackSubmittedToast, setFeedbackSubmittedToast] = useState(false);
   const [balance, setBalance] = useState({ textPct: 30, vectorPct: 60, rerankPct: 10 });
   const balanceRef = React.useRef(null);
   const draggingHandleRef = React.useRef(null);
+  const inputRef = React.useRef(null);
   const { textPct, vectorPct, rerankPct } = balance;
+
+  function getRelevanceLabel(score) {
+    if (score >= 0.6) return { label: "High", className: "searchBardResultRelevanceHigh" };
+    if (score >= 0.35) return { label: "Medium", className: "searchBardResultRelevanceMedium" };
+    return { label: "Low", className: "searchBardResultRelevanceLow" };
+  }
 
   useEffect(() => {
     projectsApi.list().then((list) => {
@@ -256,7 +277,7 @@ export default function SearchSection() {
     const q = (query || "").trim();
     if (!q) return;
     if (selectedProjectId == null) {
-      setSearchError("Select a project to search. Open Settings (gear icon) to choose a project.");
+      setSearchError("No project available. Add a project in File Repository first.");
       return;
     }
     setSubmittedQuery(q);
@@ -267,12 +288,12 @@ export default function SearchSection() {
     setFeedbackPopupOpen(false);
     setFeedbackComment("");
     setFeedbackRating(null);
-    setReasoningLog([]);
+    setReasoningLog(reasoningAnswerEnabled ? [{ kind: "question", text: `Question: ${q}` }] : []);
     setSearchLoading(true);
     try {
       let res;
       if (reasoningAnswerEnabled) {
-        res = await searchApi.reasoningStream(q, selectedProjectId, { k: 20, top_k: 12 }, {
+        res = await searchApi.reasoningStream(q, selectedProjectId, { k: 20, top_k: 12, advanced_search: advancedSearchEnabled }, {
           onEvent: ({ type, data }) => {
             if (type === "status" && data?.message) {
               setReasoningLog((prev) => [...prev, { kind: "status", text: data.message }]);
@@ -285,15 +306,26 @@ export default function SearchSection() {
             } else if (type === "search_query" && data?.query) {
               const suffix = data.total > 1 ? ` (${data.index}/${data.total})` : "";
               setReasoningLog((prev) => [...prev, { kind: "query", text: `Generated question: ${data.query}${suffix}` }]);
+            } else if (type === "search_results" && data) {
+              const total = data.total ?? 0;
+              const items = data.items ?? [];
+              const newEntries = [
+                { kind: "results_header", text: `Search results (${total} chunks):` },
+                ...items.map((item) => {
+                  const scorePct = typeof item.score === "number" ? Math.round(item.score * 100) : item.score;
+                  const preview = item.preview ? ` — ${item.preview}` : "";
+                  return { kind: "result_item", text: `  • ${item.filename || "document"} (${scorePct}%)${preview}` };
+                }),
+              ];
+              setReasoningLog((prev) => [...prev, ...newEntries]);
             } else if (type === "confidence" && data) {
               const pct = typeof data.overall === "number" ? Math.round(data.overall * 100) : data.overall;
               setReasoningLog((prev) => [...prev, { kind: "confidence", text: `Confidence: ${pct}%` }]);
             }
           },
         });
-        setReasoningLog([]);
       } else {
-        res = await searchApi.answer(q, selectedProjectId, 10);
+        res = await searchApi.answer(q, selectedProjectId, 10, { advanced_search: advancedSearchEnabled });
       }
       setSearchResults(res);
       activityApi.create({
@@ -318,6 +350,8 @@ export default function SearchSection() {
     try {
       await searchApi.submitFeedback(id, { feedback_status: "positive", feedback_score: 1 });
       setUserFeedback("positive");
+      setFeedbackSubmittedToast(true);
+      setTimeout(() => setFeedbackSubmittedToast(false), 4000);
     } catch (e) {
       console.warn("Feedback failed:", e);
     }
@@ -344,6 +378,8 @@ export default function SearchSection() {
       });
       setUserFeedback("negative");
       closeFeedbackPopup();
+      setFeedbackSubmittedToast(true);
+      setTimeout(() => setFeedbackSubmittedToast(false), 4000);
     } catch (e) {
       console.warn("Feedback failed:", e);
     }
@@ -372,7 +408,22 @@ export default function SearchSection() {
         <h1 className="searchPageBotName">RFP Assistant</h1>
         <div className="searchPageHeaderRight">
           <label className="searchPageReasoningToggle">
-            <span className="searchPageReasoningLabel">Reasoning Answer</span>
+            <span className="searchPageReasoningLabel">Reasoning Response</span>
+            <button
+              type="button"
+              className="searchPageInfoIcon"
+              onClick={(e) => { e.preventDefault(); setInfoReasoningOpen((v) => !v); setInfoAdvanceOpen(false); }}
+              aria-label="Information about Reasoning Response"
+              title="Information"
+            >
+              <IconInfo />
+            </button>
+            {infoReasoningOpen && (
+              <div className="searchPageInfoPopover" role="tooltip">
+                When enabled, search uses the agentic reasoning API: query analysis, multi-query retrieval, reranking, and synthesis to produce a more comprehensive answer.
+                <button type="button" className="searchPageInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoReasoningOpen(false); }} aria-label="Close">×</button>
+              </div>
+            )}
             <button
               type="button"
               role="switch"
@@ -383,6 +434,36 @@ export default function SearchSection() {
               <span className="searchPageReasoningKnob" />
             </button>
           </label>
+          <label className="searchPageReasoningToggle">
+            <span className="searchPageReasoningLabel">Advance search</span>
+            <button
+              type="button"
+              className="searchPageInfoIcon"
+              onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen((v) => !v); setInfoReasoningOpen(false); }}
+              aria-label="Information about Advance search"
+              title="Information"
+            >
+              <IconInfo />
+            </button>
+            {infoAdvanceOpen && (
+              <div className="searchPageInfoPopover" role="tooltip">
+                When enabled, search uses the Query Intelligence Layer: query cleanup, intent detection, rewriting, domain detection, filters, and optional clarification before retrieval to improve results.
+                <button type="button" className="searchPageInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen(false); }} aria-label="Close">×</button>
+              </div>
+            )}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={advancedSearchEnabled}
+              className={`searchPageReasoningSwitch ${advancedSearchEnabled ? "searchPageReasoningSwitchOn" : ""}`}
+              onClick={() => setAdvancedSearchEnabled((v) => !v)}
+            >
+              <span className="searchPageReasoningKnob" />
+            </button>
+          </label>
+          {(infoReasoningOpen || infoAdvanceOpen) && (
+            <div className="searchPageInfoBackdrop" aria-hidden="true" onClick={() => { setInfoReasoningOpen(false); setInfoAdvanceOpen(false); }} />
+          )}
           <div className="searchPageLangWrap">
             <button
               type="button"
@@ -433,21 +514,6 @@ export default function SearchSection() {
               <>
                 <div className="searchSettingsBackdrop" onClick={() => setSearchSettingsOpen(false)} aria-hidden="true" />
                 <div className="searchSettingsPanel" role="dialog" aria-label="Search settings">
-                  {projects.length > 0 && (
-                    <div className="searchSettingsProjectRow">
-                      <label className="searchSettingsProjectLabel">Project to search</label>
-                      <select
-                        className="searchSettingsProjectSelect"
-                        value={selectedProjectId ?? ""}
-                        onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : null)}
-                        aria-label="Project to search"
-                      >
-                        {projects.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                   <div className="searchSettingsPanelTitle">Search balance</div>
                   <p className="searchSettingsPanelHint">Drag the handles left or right to set weights (total 100%).</p>
                   <div className="searchSettingsBalanceWrap">
@@ -506,7 +572,15 @@ export default function SearchSection() {
               <IconUser />
             </div>
             <p className="searchBardHeaderQuery">{submittedQuery}</p>
-            <button type="button" className="searchBardHeaderEdit" aria-label="Edit query">
+            <button
+              type="button"
+              className="searchBardHeaderEdit"
+              aria-label="Edit query"
+              onClick={() => {
+                setQuery(submittedQuery);
+                setTimeout(() => inputRef.current?.focus(), 0);
+              }}
+            >
               <IconEdit />
             </button>
           </header>
@@ -521,8 +595,8 @@ export default function SearchSection() {
               </div>
               <div className="searchBardResponseBody">
                 {searchLoading && !reasoningAnswerEnabled && (
-                  <p className="searchBardIntro">
-                    Searching your documents and generating an answer with GPT…
+                  <p className="searchBardLoadingStatus" role="status" aria-live="polite">
+                    Searching your documents and generating an answer…
                   </p>
                 )}
                 {reasoningLog.length > 0 && (
@@ -538,12 +612,17 @@ export default function SearchSection() {
                   </div>
                 )}
                 {searchLoading && reasoningAnswerEnabled && reasoningLog.length === 0 && (
-                  <p className="searchBardIntro">
+                  <p className="searchBardLoadingStatus" role="status" aria-live="polite">
                     Running agentic reasoning (query analysis, multi-search, reranking, synthesis)…
                   </p>
                 )}
                 {searchError && (
-                  <p className="searchBardSearchError" role="alert">{searchError}</p>
+                  <div>
+                    <p className="searchBardSearchError" role="alert">{searchError}</p>
+                    <button type="button" className="searchBardRetryBtn" onClick={() => handleSubmit()}>
+                      Try again
+                    </button>
+                  </div>
                 )}
                 {!searchLoading && searchResults && (
                   <>
@@ -586,6 +665,9 @@ export default function SearchSection() {
                             <IconCopy /> Copy all
                           </button>
                         </div>
+                        {feedbackSubmittedToast && (
+                          <p className="searchBardFeedbackToast" role="status">Thanks for your feedback.</p>
+                        )}
                         {feedbackPopupOpen && (
                           <>
                             <div className="searchBardFeedbackBackdrop" onClick={closeFeedbackPopup} aria-hidden="true" />
@@ -631,22 +713,26 @@ export default function SearchSection() {
                         )}
                       </div>
                     )}
-                    <div className="searchBardIntro">
-                      <span>Sources ({searchResults.results?.length ?? 0} chunks from your knowledge base)</span>
-                    </div>
+                    <span className="searchBardSourcesTitle">
+                      Sources ({searchResults.results?.length ?? 0} chunks from your knowledge base)
+                    </span>
                     <div className="searchBardResultsList">
                       {searchResults.results?.length === 0 ? (
                         <p className="searchBardNoResults">No matching chunks. Try a different question or train the datasource for this project.</p>
                       ) : (
-                        searchResults.results?.map((r, i) => (
-                          <div key={i} className="searchBardResultItem">
-                            <div className="searchBardResultMeta">
-                              <span className="searchBardResultFile">{r.filename || "Document"}</span>
-                              <span className="searchBardResultScore">score: {r.score.toFixed(2)}</span>
+                        searchResults.results?.map((r, i) => {
+                          const relevance = getRelevanceLabel(r.score);
+                          return (
+                            <div key={i} className="searchBardResultItem">
+                              <div className="searchBardResultMeta">
+                                <span className="searchBardResultFile">{r.filename || "Document"}</span>
+                                <span className={`searchBardResultRelevance ${relevance.className}`}>{relevance.label}</span>
+                                <span className="searchBardResultScore">score: {r.score.toFixed(2)}</span>
+                              </div>
+                              <p className="searchBardResultContent">{r.content}</p>
                             </div>
-                            <p className="searchBardResultContent">{r.content}</p>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </>
@@ -674,17 +760,23 @@ export default function SearchSection() {
             <IconPlus />
           </button>
           <input
+            ref={inputRef}
             type="text"
             className="searchBardInput"
-            placeholder="Message Bard..."
+            placeholder="Ask a question about your documents…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label="Message input"
+            aria-label="Ask a question about your documents"
           />
           <button type="button" className="searchBardFooterMic" aria-label="Voice input">
             <IconMic />
           </button>
-          <button type="submit" className="searchBardFooterSend" aria-label="Send">
+          <button
+            type="submit"
+            className={`searchBardFooterSend ${query.trim() ? "searchBardFooterSendActive" : ""}`}
+            aria-label="Send"
+            title={query.trim() ? "Send" : "Enter a question to send"}
+          >
             <IconSend />
           </button>
         </form>

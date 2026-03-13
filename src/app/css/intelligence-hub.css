@@ -1,0 +1,600 @@
+/* Intelligence Hub — skeleton layout and card structure */
+
+/* Main content area (used with AppShell mainClassName="pmMain") */
+.pmMain {
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 28px 32px 40px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.appShell .pmMain {
+  padding: 28px 32px 40px;
+}
+
+/* Page wrapper */
+.ihPage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+}
+
+/* ─── Header ───────────────────────────────────────────────────────────── */
+.ihHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ihHeaderRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ihHeaderContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.ihTitle {
+  margin: 0;
+  font-size: var(--text-h2);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-family);
+  line-height: var(--line-height-tight);
+  color: var(--text, #0f172a);
+}
+
+.ihSubtitle {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: var(--muted, #64748b);
+}
+
+.ihHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.ihProjectSelect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ihProjectSelect label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+}
+
+.ihProjectSelectOpt {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--panel, #f8fafc);
+  font-size: 14px;
+  color: var(--text, #0f172a);
+  cursor: pointer;
+}
+
+.ihSearchWrap {
+  max-width: 480px;
+  width: 100%;
+}
+
+.ihSearch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--panel, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ihSearch:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+
+.ihSearch input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text, #0f172a);
+}
+
+.ihSearch input::placeholder {
+  color: var(--muted, #64748b);
+}
+
+.ihSearchIcon {
+  color: var(--muted, #64748b);
+}
+
+/* ─── Stats strip (optional hero metrics) ────────────────────────────────── */
+.ihStatsStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+}
+
+.ihStat {
+  background: var(--panel, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.ihStatValue {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--brand);
+  line-height: 1.2;
+}
+
+.ihStatLabel {
+  font-size: 12px;
+  color: var(--muted, #64748b);
+  margin-top: 4px;
+}
+
+/* ─── Main content grid ─────────────────────────────────────────────────── */
+.ihMain {
+  flex: 1;
+  min-height: 0;
+}
+
+.ihGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.ihGridFullBleed {
+  grid-column: 1 / -1;
+}
+
+/* ─── Cards ─────────────────────────────────────────────────────────────── */
+.ihCard {
+  background: var(--panel, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ihCard:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.ihCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.ihCardIcon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: var(--soft, #f1f5f9);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.ihCardTitle {
+  margin: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-heading);
+  font-family: var(--font-family);
+  color: var(--text, #0f172a);
+}
+
+.ihCardDesc {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+  line-height: 1.45;
+}
+
+.ihCardBody {
+  flex: 1;
+  min-height: 0;
+}
+
+.ihCardFooter {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light, #f1f5f9);
+  flex-shrink: 0;
+}
+
+.ihCardFooterGaps {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ihCardFooterGaps[tabindex="-1"] {
+  cursor: default;
+  pointer-events: auto;
+}
+
+.ihCardLink {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+
+.ihCardLink:hover {
+  text-decoration: underline;
+}
+
+.ihCardBtn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--brand-border);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ihCardBtn:hover {
+  background: var(--brand-tint);
+}
+
+.ihCardBtn:not(:disabled) {
+  cursor: pointer;
+}
+
+.ihCardBtnReviewGaps {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* Card variants */
+.ihCardWarn {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, var(--panel, #f8fafc) 100%);
+}
+
+.ihCardSuccess {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.05) 0%, var(--panel, #f8fafc) 100%);
+}
+
+.ihCardFull {
+  grid-column: 1 / -1;
+}
+
+/* ─── List placeholders (docs, topics, gaps) ─────────────────────────────── */
+.ihList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ihListItem {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light, #f1f5f9);
+}
+
+.ihListItem:last-child {
+  border-bottom: none;
+}
+
+.ihListEmpty {
+  color: var(--muted, #64748b);
+  font-style: italic;
+  padding: 16px 0;
+  text-align: center;
+}
+
+/* Gaps card — question + reason in list item */
+.ihGapsQuestion {
+  display: block;
+  font-size: 13px;
+  color: var(--text, #0f172a);
+  margin-bottom: 4px;
+}
+
+.ihGapsReason {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--muted, #64748b);
+  background: var(--soft, #f1f5f9);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+/* ─── Review Gaps modal ──────────────────────────────────────────────────── */
+.ihModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 24px;
+  animation: ihModalFadeIn 0.2s ease;
+}
+
+@keyframes ihModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ihModal {
+  background: var(--panel, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  max-width: 640px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: ihModalSlideIn 0.25s ease;
+}
+
+@keyframes ihModalSlideIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.ihModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light, #f1f5f9);
+  flex-shrink: 0;
+}
+
+.ihModalTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.ihModalClose {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--soft, #f1f5f9);
+  border-radius: 10px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.ihModalClose:hover {
+  background: var(--border, #e2e8f0);
+  color: var(--text, #0f172a);
+}
+
+.ihModalBody {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.ihModalDesc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--muted, #64748b);
+  line-height: 1.5;
+}
+
+.ihModalGapsList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ihModalGapItem {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--border-light, #f1f5f9);
+  border-radius: 12px;
+}
+
+.ihModalGapQuestion {
+  display: block;
+  font-size: 14px;
+  color: var(--text, #0f172a);
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+
+.ihModalGapQuestion strong {
+  margin-right: 4px;
+}
+
+.ihModalGapReason {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.ihModalGapLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  margin-bottom: 6px;
+}
+
+.ihModalGapTextarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.5;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--panel, #f8fafc);
+  color: var(--text, #0f172a);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.ihModalGapTextarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+
+.ihModalGapTextarea::placeholder {
+  color: var(--muted, #64748b);
+}
+
+.ihModalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-light, #f1f5f9);
+  flex-shrink: 0;
+}
+
+.ihModalSubmit {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s, background 0.2s;
+}
+
+.ihModalSubmit:hover {
+  opacity: 0.92;
+}
+
+/* ─── Skeleton placeholders (loading / empty state) ──────────────────────── */
+.ihSkeleton {
+  background: linear-gradient(
+    90deg,
+    var(--soft, #f1f5f9) 25%,
+    rgba(226, 232, 240, 0.6) 50%,
+    var(--soft, #f1f5f9) 75%
+  );
+  background-size: 200% 100%;
+  animation: ihSkeletonShimmer 1.2s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+@keyframes ihSkeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ihSkeletonTitle {
+  height: 20px;
+  width: 60%;
+  margin-bottom: 12px;
+}
+
+.ihSkeletonLine {
+  height: 14px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.ihSkeletonLineShort {
+  width: 75%;
+}
+
+/* ─── Error & loading states ────────────────────────────────────────────── */
+.ihError {
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.ihLoading {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted, #64748b);
+  font-size: 15px;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 1150px) {
+  .ihGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .ihHeaderRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ihSearchWrap {
+    max-width: none;
+  }
+
+  .ihStatsStrip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ihTitle {
+    font-size: 24px;
+  }
+}

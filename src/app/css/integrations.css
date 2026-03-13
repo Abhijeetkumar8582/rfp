@@ -7,7 +7,7 @@
 .intPage {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 20px 48px;
+  /* padding: 24px 20px 48px; */
 }
 
 .intHeader {
@@ -16,8 +16,9 @@
 
 .intTitle {
   margin: 0 0 8px;
-  font-size: 28px;
-  font-weight: 800;
+  font-size: var(--text-h2);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-family);
   letter-spacing: -0.03em;
   color: var(--text);
 }

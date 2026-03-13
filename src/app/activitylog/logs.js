@@ -29,6 +29,8 @@ export default function ActivityLog() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [filterPill, setFilterPill] = useState("All"); // All | Critical | Security | Adv. Filter
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     activityApi.create({
@@ -84,6 +86,20 @@ export default function ActivityLog() {
     events.filter((e) => (e.severity || "").toLowerCase() === "admin").length,
     [events]
   );
+
+  // Pagination: slice filtered list to current page
+  const totalFiltered = filteredEvents.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const pageStart = (currentPage - 1) * pageSize;
+  const paginatedEvents = useMemo(
+    () => filteredEvents.slice(pageStart, pageStart + pageSize),
+    [filteredEvents, pageStart, pageSize]
+  );
+
+  // Reset to page 1 when filters/search change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterPill]);
 
   return (
     <div className="glPage">
@@ -179,7 +195,7 @@ export default function ActivityLog() {
                   </td>
                 </tr>
               ) : (
-                filteredEvents.map((row) => (
+                paginatedEvents.map((row) => (
                   <tr key={row.id}>
                     <td className="glCell glCell-time">{formatTimestamp(row.timestamp)}</td>
                     <td className="glCell">{row.actor ?? "—"}</td>
@@ -198,6 +214,51 @@ export default function ActivityLog() {
           </table>
         )}
       </div>
+
+      {/* Pagination */}
+      {!loading && filteredEvents.length > 0 && (
+        <div className="glPagination">
+          <div className="glPaginationInfo">
+            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, totalFiltered)} of {totalFiltered}
+          </div>
+          <div className="glPaginationControls">
+            <select
+              className="glPaginationPageSize"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              aria-label="Rows per page"
+            >
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>{n} per page</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="glPaginationBtn"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage <= 1}
+              aria-label="Previous page"
+            >
+              Previous
+            </button>
+            <span className="glPaginationPageNum">
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="glPaginationBtn"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage >= totalPages}
+              aria-label="Next page"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

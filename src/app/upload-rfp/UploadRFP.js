@@ -19,6 +19,14 @@ const IconDoc = () => (
   </svg>
 );
 
+const IconInfo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+);
+
 const docTabs = [
   { id: "all", label: "All RFPs", icon: IconDoc },
   
@@ -58,6 +66,29 @@ const statusPillClass = (status) => {
 };
 
 const VIEW_RFP_PAGE_SIZE = 10;
+
+/** Backend returns this when no context was found for an answer (RFP GET empty slot). */
+const NO_ARTICLES_MESSAGE = "Sorry No articles found";
+
+/** Backend search/answer returns answer starting with this when no articles were found (see search_answer.py UNANSWERED_PREFIX). */
+const UNANSWERED_PREFIX = "Unanswered : ";
+
+function isUnansweredAnswer(a) {
+  const s = (a ?? "").toString().trim();
+  if (s === "" || s === NO_ARTICLES_MESSAGE) return true;
+  if (s.startsWith(UNANSWERED_PREFIX)) return true;
+  return false;
+}
+
+/** Format answer for display in Bulk Questions: prefix/suffix when it's an unanswered-style response. */
+function formatBulkAnswerDisplay(answer) {
+  const s = (answer ?? "").toString().trim();
+  if (!s) return "";
+  if (s.startsWith("The passages do not specify")) {
+    return `Unanswered: ${s} This would be difficult.`;
+  }
+  return s;
+}
 
 /** Modal to view a single RFP (questions/answers) — fetches by rfpid, shows table. Inline edit for one answer at a time. */
 function ViewRfpModal({ rfpid, onClose }) {
@@ -160,11 +191,26 @@ function ViewRfpModal({ rfpid, onClose }) {
           <h2>{rfp?.name ?? "RFP"}</h2>
           <button type="button" className="uploadModalClose" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <div className="uploadModalBody questionsModalBody" style={{ padding: "16px 24px" }}>
+        <div className="uploadModalBody questionsModalBody viewRfpModalBody" style={{ padding: "16px 24px" }}>
           {loading && <div className="docEmptyState">Loading…</div>}
           {error && <div className="uploadModalError" style={{ marginBottom: 12 }}>{error}</div>}
           {!loading && rfp && (
             <>
+              {/* RFP summary metrics: blue (accuracy), green (answered), red (unanswered) */}
+              <div className="viewRfpMetrics">
+                <div className="viewRfpMetric viewRfpMetricAccuracy">
+                  <span className="viewRfpMetricLabel">Average accuracy</span>
+                  <span className="viewRfpMetricValue">{rfp.average_accuracy != null ? `${Math.round(Number(rfp.average_accuracy) * 100)}%` : "—"}</span>
+                </div>
+                <div className="viewRfpMetric viewRfpMetricAnswered">
+                  <span className="viewRfpMetricLabel">Total answered</span>
+                  <span className="viewRfpMetricValue">{questions.filter((_, i) => !isUnansweredAnswer(answers[i])).length}</span>
+                </div>
+                <div className="viewRfpMetric viewRfpMetricUnanswered">
+                  <span className="viewRfpMetricLabel">Total unanswered</span>
+                  <span className="viewRfpMetricValue">{questions.filter((_, i) => isUnansweredAnswer(answers[i])).length}</span>
+                </div>
+              </div>
               <dl style={{ margin: "0 0 16px", display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 16px", fontSize: 14 }}>
                 <dt style={{ color: "#666" }}>Created</dt>
                 <dd style={{ margin: 0 }}>{formatDate(rfp.created_at)}</dd>
@@ -275,13 +321,493 @@ function ViewRfpModal({ rfpid, onClose }) {
   );
 }
 
+/** Name filter dropdown: search bar + list of names; filter table on select */
+function NameFilterDropdown({ docs, nameFilter, onNameFilterChange, open, onOpenChange }) {
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+
+  const uniqueNames = React.useMemo(() => {
+    const names = [...new Set((docs || []).map((d) => (d.name || "").trim()).filter(Boolean))];
+    return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [docs]);
+
+  const filteredNames = React.useMemo(() => {
+    if (!search.trim()) return uniqueNames;
+    const q = search.trim().toLowerCase();
+    return uniqueNames.filter((n) => n.toLowerCase().includes(q));
+  }, [uniqueNames, search]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) onOpenChange(false);
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [open, onOpenChange]);
+
+  return (
+    <div className="docFilterDropdownWrap" ref={ref}>
+      <button
+        type="button"
+        className="docSelect docFilterDropdownTrigger"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-label="Filter by name"
+      >
+        Name <span className="docFilterDropdownCaret">▼</span>
+      </button>
+      {open && (
+        <div className="docFilterDropdownPanel docNameFilterPanel" role="listbox">
+          <div className="docFilterDropdownSearchWrap">
+            <input
+              type="text"
+              className="docFilterDropdownSearch"
+              placeholder="Search names..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+              aria-label="Search names"
+            />
+          </div>
+          <div className="docFilterDropdownList">
+            <button
+              type="button"
+              className={`docFilterDropdownItem ${nameFilter == null ? "docFilterDropdownItemActive" : ""}`}
+              onClick={() => { onNameFilterChange(null); onOpenChange(false); }}
+              role="option"
+              aria-selected={nameFilter == null}
+            >
+              All names
+            </button>
+            {filteredNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={`docFilterDropdownItem ${nameFilter === name ? "docFilterDropdownItemActive" : ""}`}
+                onClick={() => { onNameFilterChange(name); onOpenChange(false); }}
+                role="option"
+                aria-selected={nameFilter === name}
+              >
+                {name}
+              </button>
+            ))}
+            {filteredNames.length === 0 && <div className="docFilterDropdownEmpty">No names match</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Build calendar grid for a month (weeks of 7 days, Sun–Sat). Each cell: { date, currentMonth }. */
+function getCalendarGrid(year, month) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const startDay = first.getDay();
+  const daysInMonth = last.getDate();
+  const grid = [];
+  const prevMonth = month === 0 ? 11 : month - 1;
+  const prevYear = month === 0 ? year - 1 : year;
+  const prevLast = new Date(prevYear, prevMonth + 1, 0).getDate();
+  let day = 1;
+  let nextMonthDay = 1;
+  for (let row = 0; row < 6; row++) {
+    const week = [];
+    for (let col = 0; col < 7; col++) {
+      const i = row * 7 + col;
+      if (i < startDay) {
+        const d = prevLast - startDay + i + 1;
+        week.push({ date: d, currentMonth: false, year: prevYear, month: prevMonth });
+      } else if (day <= daysInMonth) {
+        week.push({ date: day, currentMonth: true, year, month });
+        day++;
+      } else {
+        week.push({ date: nextMonthDay, currentMonth: false, year: month === 11 ? year + 1 : year, month: month === 11 ? 0 : month + 1 });
+        nextMonthDay++;
+      }
+    }
+    grid.push(week);
+  }
+  return grid;
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Format YYYY-MM-DD from Date */
+function toDateString(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const YEAR_RANGE_SIZE = 12;
+function getYearRange(centerYear) {
+  const start = Math.floor(centerYear / YEAR_RANGE_SIZE) * YEAR_RANGE_SIZE;
+  return Array.from({ length: YEAR_RANGE_SIZE }, (_, i) => start + i);
+}
+
+/** Single calendar for start or end date: day view, month picker (3x4), year picker. Optional range for highlighting.
+ *  onDoubleClickSelect: when provided, double-click sets both start and end to that date (single-day selection).
+ *  isStartCalendar: when true, clicking a month in month view sets date to first day of month; when false, to last day (for month range). */
+function MiniCalendar({ label, selectedDate, onSelect, monthState, onMonthChange, rangeStartDate, rangeEndDate, onDoubleClickSelect, isStartCalendar }) {
+  const [view, setView] = useState("days");
+
+  const grid = getCalendarGrid(monthState.year, monthState.month);
+  const yearRange = React.useMemo(() => getYearRange(monthState.year), [monthState.year]);
+
+  const [rangeStart, rangeEnd] = React.useMemo(() => {
+    if (!rangeStartDate || !rangeEndDate) return [null, null];
+    const a = rangeStartDate;
+    const b = rangeEndDate;
+    return a <= b ? [a, b] : [b, a];
+  }, [rangeStartDate, rangeEndDate]);
+
+  const handleSelectMonth = (monthIndex) => {
+    const year = monthState.year;
+    const monthStr = String(monthIndex + 1).padStart(2, "0");
+    const dateStr = isStartCalendar
+      ? `${year}-${monthStr}-01`
+      : `${year}-${monthStr}-${String(new Date(year, monthIndex + 1, 0).getDate()).padStart(2, "0")}`;
+    onSelect(dateStr);
+    onMonthChange({ year, month: monthIndex });
+    setView("days");
+  };
+
+  const handleSelectYear = (year) => {
+    onMonthChange({ year, month: monthState.month });
+    setView("months");
+  };
+
+  return (
+    <div className="docDateSingleCalendar">
+      <div className="docDateCalendarHeader">
+        {view === "days" && (
+          <>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => (prev.month === 0 ? { year: prev.year - 1, month: 11 } : { year: prev.year, month: prev.month - 1 }))}
+              aria-label={`Previous month (${label})`}
+            >
+              ‹
+            </button>
+            <span className="docDateCalendarMonthLabel docDateCalendarClickable">
+              <button type="button" className="docDateCalendarHeaderMonth" onClick={() => setView("months")}>
+                {MONTHS[monthState.month]}
+              </button>
+              {" "}
+              <button type="button" className="docDateCalendarHeaderYear" onClick={() => setView("years")}>
+                {monthState.year}
+              </button>
+            </span>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => (prev.month === 11 ? { year: prev.year + 1, month: 0 } : { year: prev.year, month: prev.month + 1 }))}
+              aria-label={`Next month (${label})`}
+            >
+              ›
+            </button>
+          </>
+        )}
+        {view === "months" && (
+          <>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => ({ ...prev, year: prev.year - 1 }))}
+              aria-label={`Previous year (${label})`}
+            >
+              ‹
+            </button>
+            <button type="button" className="docDateCalendarMonthLabel docDateCalendarHeaderYearOnly" onClick={() => setView("years")}>
+              {monthState.year}
+            </button>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => ({ ...prev, year: prev.year + 1 }))}
+              aria-label={`Next year (${label})`}
+            >
+              ›
+            </button>
+          </>
+        )}
+        {view === "years" && (
+          <>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => ({ ...prev, year: prev.year - YEAR_RANGE_SIZE }))}
+              aria-label={`Previous years (${label})`}
+            >
+              ‹
+            </button>
+            <span className="docDateCalendarMonthLabel">
+              {yearRange[0]} – {yearRange[yearRange.length - 1]}
+            </span>
+            <button
+              type="button"
+              className="docDateCalendarNav"
+              onClick={() => onMonthChange((prev) => ({ ...prev, year: prev.year + YEAR_RANGE_SIZE }))}
+              aria-label={`Next years (${label})`}
+            >
+              ›
+            </button>
+          </>
+        )}
+      </div>
+      <div className="docDateCalendarSubLabel">{label}</div>
+
+      {view === "days" && (
+        <table className="docDateCalendarTable" role="grid" aria-label={`${label} calendar`}>
+          <thead>
+            <tr>
+              {WEEKDAYS.map((wd) => (
+                <th key={wd} className="docDateCalendarWeekday" scope="col">{wd}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grid.map((week, wi) => (
+              <tr key={wi}>
+                {week.map((cell, ci) => {
+                  const dateStr = `${cell.year}-${String(cell.month + 1).padStart(2, "0")}-${String(cell.date).padStart(2, "0")}`;
+                  const isSelected = selectedDate === dateStr;
+                  const isRangeStart = rangeStart && rangeEnd && dateStr === rangeStart;
+                  const isRangeEnd = rangeStart && rangeEnd && dateStr === rangeEnd;
+                  const isInRange = rangeStart && rangeEnd && dateStr >= rangeStart && dateStr <= rangeEnd;
+                  const rangeClass = isRangeStart && isRangeEnd
+                    ? "docDateCalendarDayRangeStart docDateCalendarDayRangeEnd"
+                    : isRangeStart
+                      ? "docDateCalendarDayRangeStart"
+                      : isRangeEnd
+                        ? "docDateCalendarDayRangeEnd"
+                        : isInRange
+                          ? "docDateCalendarDayInRange"
+                          : "";
+                  const selectedClass = (rangeStart && rangeEnd) ? "" : (!rangeClass && isSelected ? "docDateCalendarDaySelected" : "");
+                  return (
+                    <td key={ci} className="docDateCalendarCell">
+                      <button
+                        type="button"
+                        className={`docDateCalendarDay ${!cell.currentMonth ? "docDateCalendarDayOther" : ""} ${rangeClass} ${selectedClass}`}
+                        onClick={() => onSelect(dateStr)}
+                        onDoubleClick={(e) => {
+                          e.preventDefault();
+                          if (onDoubleClickSelect) onDoubleClickSelect(dateStr);
+                          else onSelect(dateStr);
+                        }}
+                        aria-pressed={isSelected || isInRange}
+                        aria-label={`${cell.date} ${MONTHS[cell.month]} ${cell.year}`}
+                      >
+                        {cell.date}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {view === "months" && (
+        <div className="docDateMonthGrid" role="grid" aria-label={`Select month (${label})`}>
+          {MONTHS_SHORT.map((name, index) => {
+            const isSelected = monthState.month === index;
+            return (
+              <button
+                key={name}
+                type="button"
+                className={`docDateMonthGridItem ${isSelected ? "docDateCalendarDaySelected" : ""}`}
+                onClick={() => handleSelectMonth(index)}
+                aria-pressed={isSelected}
+                aria-label={`${MONTHS[index]} ${monthState.year}`}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "years" && (
+        <div className="docDateYearGrid" role="grid" aria-label={`Select year (${label})`}>
+          {yearRange.map((y) => {
+            const isSelected = monthState.year === y;
+            return (
+              <button
+                key={y}
+                type="button"
+                className={`docDateYearGridItem ${isSelected ? "docDateCalendarDaySelected" : ""}`}
+                onClick={() => handleSelectYear(y)}
+                aria-pressed={isSelected}
+                aria-label={`Year ${y}`}
+              >
+                {y}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Date range filter dropdown: quick buttons + two calendars (start & end), default today */
+function DateFilterDropdown({
+  dateRangeFilter,
+  onDateRangeFilterChange,
+  customDateStart,
+  customDateEnd,
+  onCustomRangeChange,
+  open,
+  onOpenChange,
+}) {
+  const ref = useRef(null);
+  const todayStr = React.useMemo(() => toDateString(new Date()), []);
+
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [monthStart, setMonthStart] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [monthEnd, setMonthEnd] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) onOpenChange(false);
+    }
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (open) {
+      if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+        setStartDate(customDateStart);
+        setEndDate(customDateEnd);
+        const [ys, ms] = customDateStart.split("-").map(Number);
+        setMonthStart({ year: ys, month: (ms || 1) - 1 });
+        const [ye, me] = customDateEnd.split("-").map(Number);
+        setMonthEnd({ year: ye, month: (me || 1) - 1 });
+      } else {
+        const d = new Date();
+        setStartDate(todayStr);
+        setEndDate(null);
+        setMonthStart({ year: d.getFullYear(), month: d.getMonth() });
+        const nextMonth = d.getMonth() === 11 ? new Date(d.getFullYear() + 1, 0, 1) : new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        setMonthEnd({ year: nextMonth.getFullYear(), month: nextMonth.getMonth() });
+      }
+    }
+  }, [open, dateRangeFilter, customDateStart, customDateEnd, todayStr]);
+
+  const options = [
+    { id: "today", label: "Today" },
+    { id: "last7", label: "Last 7 days" },
+    { id: "last30", label: "Last 30 days" },
+  ];
+
+  const handleApplyRange = () => {
+    const start = startDate || todayStr;
+    const end = endDate || start;
+    const [s, e] = [start, end].sort();
+    onCustomRangeChange(s, e);
+    onDateRangeFilterChange("custom");
+    onOpenChange(false);
+  };
+
+  return (
+    <div className="docFilterDropdownWrap" ref={ref}>
+      <button
+        type="button"
+        className="docSelect docFilterDropdownTrigger"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label="Filter by date"
+      >
+        Date <span className="docFilterDropdownCaret">▼</span>
+      </button>
+      {open && (
+        <div className="docFilterDropdownPanel docDateFilterPanel docDateFilterPanelWithCalendar" role="dialog" aria-label="Date range filter">
+          <div className="docDateFilterLayout">
+            <div className="docDateFilterButtons">
+              <button
+                type="button"
+                className={`docDateFilterBtn ${dateRangeFilter == null ? "docDateFilterBtnActive" : ""}`}
+                onClick={() => { onDateRangeFilterChange(null); onCustomRangeChange(null, null); onOpenChange(false); }}
+                role="option"
+                aria-selected={dateRangeFilter == null}
+              >
+                All dates
+              </button>
+              {options.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  className={`docDateFilterBtn ${dateRangeFilter === opt.id ? "docDateFilterBtnActive" : ""}`}
+                  onClick={() => { onDateRangeFilterChange(opt.id); onCustomRangeChange(null, null); onOpenChange(false); }}
+                  role="option"
+                  aria-selected={dateRangeFilter === opt.id}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="docDateCalendarsRow">
+              <MiniCalendar
+                label="Start date"
+                selectedDate={startDate}
+                onSelect={setStartDate}
+                monthState={monthStart}
+                onMonthChange={setMonthStart}
+                rangeStartDate={startDate && endDate ? startDate : null}
+                rangeEndDate={startDate && endDate ? endDate : null}
+                onDoubleClickSelect={(dateStr) => { setStartDate(dateStr); setEndDate(dateStr); }}
+                isStartCalendar={true}
+              />
+              <MiniCalendar
+                label="End date"
+                selectedDate={endDate}
+                onSelect={setEndDate}
+                monthState={monthEnd}
+                onMonthChange={setMonthEnd}
+                rangeStartDate={startDate && endDate ? startDate : null}
+                rangeEndDate={startDate && endDate ? endDate : null}
+                onDoubleClickSelect={(dateStr) => { setStartDate(dateStr); setEndDate(dateStr); }}
+                isStartCalendar={false}
+              />
+            </div>
+          </div>
+          <div className="docDateFilterApplyWrap">
+            <button type="button" className="docDateFilterApplyBtn" onClick={handleApplyRange}>
+              Apply range
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PAGE_SIZE = 10;
 
 export default function UploadRFP() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("all");
-  const [sortTag, setSortTag] = useState(true);
-  const [listView, setListView] = useState(true);
+  const [listView, setListView] = useState(true); /* false = grid (box) as default */
 
   const [docs, setDocs] = useState([]);
   const [totalDocs, setTotalDocs] = useState(0);
@@ -348,11 +874,56 @@ export default function UploadRFP() {
   const [generatingAnswers, setGeneratingAnswers] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [generatingIndex, setGeneratingIndex] = useState(0);
+  const [advanceSearchEnabled, setAdvanceSearchEnabled] = useState(false);
+  const [reasoningResponseEnabled, setReasoningResponseEnabled] = useState(false);
+  const [infoReasoningOpen, setInfoReasoningOpen] = useState(false);
+  const [infoAdvanceOpen, setInfoAdvanceOpen] = useState(false);
 
   // My RFPs table: view single RFP modal, 3-dot menu open state (rfpid)
   const [rfpViewRfpid, setRfpViewRfpid] = useState(null);
   const [openKebabRfpid, setOpenKebabRfpid] = useState(null);
   const kebabRef = useRef(null);
+
+  // Toolbar filters: Name (search + select) and Date (range: start/end, default today)
+  const [nameFilter, setNameFilter] = useState(null);
+  const [dateRangeFilter, setDateRangeFilter] = useState(null);
+  const [customDateStart, setCustomDateStart] = useState(null);
+  const [customDateEnd, setCustomDateEnd] = useState(null);
+  const [openNameDropdown, setOpenNameDropdown] = useState(false);
+  const [openDateDropdown, setOpenDateDropdown] = useState(false);
+
+  const filteredDocs = React.useMemo(() => {
+    let list = docs || [];
+    if (nameFilter) {
+      list = list.filter((d) => (d.name || "").trim() === nameFilter);
+    }
+    if (dateRangeFilter) {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      list = list.filter((d) => {
+        const dt = d.last_activity_at || d.created_at;
+        if (!dt) return false;
+        const t = new Date(dt).getTime();
+        if (dateRangeFilter === "today") return t >= todayStart;
+        if (dateRangeFilter === "last7") return t >= now.getTime() - 7 * 24 * 60 * 60 * 1000;
+        if (dateRangeFilter === "last30") return t >= now.getTime() - 30 * 24 * 60 * 60 * 1000;
+        if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+          const [ys, ms, ds] = customDateStart.split("-").map(Number);
+          const [ye, me, de] = customDateEnd.split("-").map(Number);
+          const rangeStart = new Date(ys, (ms || 1) - 1, ds || 1, 0, 0, 0, 0).getTime();
+          const rangeEnd = new Date(ye, (me || 1) - 1, de || 1, 23, 59, 59, 999).getTime();
+          return t >= rangeStart && t <= rangeEnd;
+        }
+        return true;
+      });
+    }
+    return list;
+  }, [docs, nameFilter, dateRangeFilter, customDateStart, customDateEnd]);
+
+  const handleCustomRangeChange = React.useCallback((start, end) => {
+    setCustomDateStart(start);
+    setCustomDateEnd(end);
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -479,6 +1050,8 @@ export default function UploadRFP() {
     setShowUploadBulkModal(false);
     setSelectedFile(null);
     setUploadError("");
+    setInfoReasoningOpen(false);
+    setInfoAdvanceOpen(false);
   }
 
   function closeQuestionsModal() {
@@ -488,6 +1061,8 @@ export default function UploadRFP() {
     setQuestionsPage(1);
     setGenerateError("");
     setGeneratingAnswers(false);
+    setInfoReasoningOpen(false);
+    setInfoAdvanceOpen(false);
   }
 
   useEffect(() => {
@@ -512,18 +1087,28 @@ export default function UploadRFP() {
     setGenerateError("");
     setGeneratingAnswers(true);
     const answers = [];
+    const confidenceList = [];
     for (let i = 0; i < bulkQuestions.length; i++) {
       setGeneratingIndex(i + 1);
       const row = bulkQuestions[i];
       const q = (row.question || "").trim();
       if (!q) {
         answers.push(row.answer ?? "");
+        confidenceList.push(0);
         continue;
       }
       try {
-        const res = await searchApi.answer(q, projectId, 10);
+        let res;
+        if (reasoningResponseEnabled) {
+          res = await searchApi.reasoning(q, projectId, { k: 20, top_k: 12, advanced_search: advanceSearchEnabled });
+        } else {
+          res = await searchApi.answer(q, projectId, 10, { advanced_search: advanceSearchEnabled });
+        }
         const answer = res?.answer ?? "";
+        const conf = res?.confidence?.overall;
+        const confNum = typeof conf === "number" && !Number.isNaN(conf) ? conf : 0;
         answers.push(answer);
+        confidenceList.push(confNum);
         setBulkQuestions((prev) =>
           prev.map((item) =>
             item.id === row.id ? { ...item, answer } : item
@@ -532,6 +1117,7 @@ export default function UploadRFP() {
       } catch (err) {
         const msg = err?.message || "Search failed.";
         answers.push(`[Error: ${msg}]`);
+        confidenceList.push(0);
         setBulkQuestions((prev) =>
           prev.map((item) =>
             item.id === row.id ? { ...item, answer: `[Error: ${msg}]` } : item
@@ -541,7 +1127,7 @@ export default function UploadRFP() {
     }
     if (currentRfpid && answers.length > 0) {
       try {
-        await rfpQuestionsApi.updateAnswers(currentRfpid, answers);
+        await rfpQuestionsApi.updateAnswers(currentRfpid, answers, confidenceList);
       } catch (err) {
         setGenerateError(err?.message || "Failed to save answers to the server.");
       }
@@ -559,8 +1145,8 @@ export default function UploadRFP() {
       <header className="docPageHeader">
         <h1 className="pageTitle">My RFPs</h1>
         <div className="docHeaderActions">
-          <button type="button" className="ghostBtn docExportBtn" onClick={openUploadBulk}>
-            Upload Bulk Question
+          <button type="button" className="uploadBulkQuestionBtn" onClick={openUploadBulk}>
+            Upload RFP
           </button>
         </div>
       </header>
@@ -585,18 +1171,23 @@ export default function UploadRFP() {
 
       <div className="docToolbar">
         <div className="docToolbarLeft">
-          {sortTag && (
-            <span className="docSortTag">
-              Sort By: Last Updated Des <button type="button" className="docSortTagRemove" onClick={() => setSortTag(false)} aria-label="Remove">×</button>
-            </span>
-          )}
-          <select className="docSelect" aria-label="Name">
-            <option>Name</option>
-          </select>
-          <select className="docSelect" aria-label="Date">
-            <option>Date</option>
-          </select>
-          <button type="button" className="ghostBtn docMoreFilters">
+          <NameFilterDropdown
+            docs={docs}
+            nameFilter={nameFilter}
+            onNameFilterChange={setNameFilter}
+            open={openNameDropdown}
+            onOpenChange={setOpenNameDropdown}
+          />
+          <DateFilterDropdown
+            dateRangeFilter={dateRangeFilter}
+            onDateRangeFilterChange={setDateRangeFilter}
+            customDateStart={customDateStart}
+            customDateEnd={customDateEnd}
+            onCustomRangeChange={handleCustomRangeChange}
+            open={openDateDropdown}
+            onOpenChange={setOpenDateDropdown}
+          />
+          <button type="button" className="docMoreFiltersBtn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
             More Filters
           </button>
@@ -606,7 +1197,6 @@ export default function UploadRFP() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
             <input className="searchInput" placeholder="Search..." />
           </div>
-          <button type="button" className="ghostBtn">Manage Folders</button>
           <div className="docViewToggle">
             <button type="button" className={`docViewBtn ${!listView ? "docViewBtnActive" : ""}`} onClick={() => setListView(false)} aria-label="Grid view">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
@@ -621,58 +1211,144 @@ export default function UploadRFP() {
       {listError && (
         <div className="docListError" role="alert">{listError}</div>
       )}
-      <div className="docTableWrap">
-        <table className="docTable">
-          <thead>
-            <tr>
-              <th className="docThCheck" />
-              <th className="docThName">Name</th>
-              <th className="docThActivity">Last Activity</th>
-              <th className="docThRecipients">Recipients</th>
-              <th className="docThStatus">Status</th>
-              <th className="docThActions" />
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      {listView ? (
+        <div className="docTableWrap">
+          <table className="docTable">
+            <thead>
               <tr>
-                <td colSpan={6} className="docEmptyState">
-                  Loading RFPs…
-                </td>
+                <th className="docThCheck" />
+                <th className="docThName">Name</th>
+                <th className="docThActivity">Last Activity</th>
+                <th className="docThRecipients">Recipients</th>
+                <th className="docThStatus">Status</th>
+                <th className="docThActions" />
               </tr>
-            ) : docs.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="docEmptyState">
-                  No RFPs found. Upload a bulk question to get started.
-                </td>
-              </tr>
-            ) : (
-              docs.map((doc) => (
-                <tr key={doc.id}>
-                  <td className="docTdCheck">
-                    <input type="checkbox" className="docCheckbox" aria-label={`Select ${doc.name}`} />
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="docEmptyState">
+                    Loading RFPs…
                   </td>
-                  <td className="docTdName">
-                    <span className="docCellIcon">
+                </tr>
+              ) : filteredDocs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="docEmptyState">
+                    {docs.length === 0 ? "No RFPs found. Upload a bulk question to get started." : "No RFPs match the current filters."}
+                  </td>
+                </tr>
+              ) : (
+                filteredDocs.map((doc) => (
+                  <tr key={doc.id}>
+                    <td className="docTdCheck">
+                      <input type="checkbox" className="docCheckbox" aria-label={`Select ${doc.name}`} />
+                    </td>
+                    <td className="docTdName">
+                      <span className="docCellIcon">
+                        <IconDoc />
+                      </span>
+                      <div className="docCellNameBlock">
+                        <span className="docCellTitle">{doc.name}</span>
+                        <span className="docCellMeta">Created: {formatDate(doc.created_at)}</span>
+                      </div>
+                    </td>
+                    <td className="docTdActivity">{formatDate(doc.last_activity_at)}</td>
+                    <td className="docTdRecipients">
+                      <div className="docAvatars">
+                        {(Array.isArray(doc.recipients) ? doc.recipients : []).map((r, i) => (
+                          <span key={i} className="docAvatar" title={r}>{r}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="docTdStatus">
+                      <span className={statusPillClass(doc.status)}>{doc.status}</span>
+                    </td>
+                    <td className="docTdActions">
+                      <button type="button" className="docViewLink" onClick={() => setRfpViewRfpid(doc.rfpid)}>View</button>
+                      <div className="docKebabWrap" ref={openKebabRfpid === doc.rfpid ? kebabRef : null} style={{ position: "relative", display: "inline-block" }}>
+                        <button
+                          type="button"
+                          className="kebab docKebab"
+                          aria-label="More actions"
+                          aria-expanded={openKebabRfpid === doc.rfpid}
+                          onClick={(e) => { e.stopPropagation(); setOpenKebabRfpid((prev) => (prev === doc.rfpid ? null : doc.rfpid)); }}
+                        >
+                          ⋯
+                        </button>
+                        {openKebabRfpid === doc.rfpid && (
+                          <div className="docKebabDropdown" role="menu">
+                            <button
+                              type="button"
+                              className="docKebabItem docKebabItemDanger"
+                              role="menuitem"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) return;
+                                try {
+                                  await rfpQuestionsApi.delete(doc.rfpid);
+                                  setOpenKebabRfpid(null);
+                                  if (rfpViewRfpid === doc.rfpid) setRfpViewRfpid(null);
+                                  fetchRfps();
+                                } catch (err) {
+                                  setListError(err?.message || "Delete failed");
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="docGridWrap">
+          {loading ? (
+            <div className="docGridEmptyState">Loading RFPs…</div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="docGridEmptyState">
+              {docs.length === 0 ? "No RFPs found. Upload a bulk question to get started." : "No RFPs match the current filters."}
+            </div>
+          ) : (
+            <div className="docGrid">
+              {filteredDocs.map((doc) => (
+                <div key={doc.id} className="docGridCard">
+                  <div className="docGridCardHeader">
+                    <input type="checkbox" className="docCheckbox" aria-label={`Select ${doc.name}`} />
+                    <span className="docGridCardIcon">
                       <IconDoc />
                     </span>
-                    <div className="docCellNameBlock">
-                      <span className="docCellTitle">{doc.name}</span>
-                      <span className="docCellMeta">Created: {formatDate(doc.created_at)}</span>
+                    <div className="docGridCardNameBlock">
+                      <span className="docGridCardTitle">{doc.name}</span>
+                      <span className="docGridCardMeta">Created: {formatDate(doc.created_at)}</span>
                     </div>
-                  </td>
-                  <td className="docTdActivity">{formatDate(doc.last_activity_at)}</td>
-                  <td className="docTdRecipients">
-                    <div className="docAvatars">
-                      {(Array.isArray(doc.recipients) ? doc.recipients : []).map((r, i) => (
-                        <span key={i} className="docAvatar" title={r}>{r}</span>
-                      ))}
+                  </div>
+                  <div className="docGridCardBody">
+                    <div className="docGridCardRow">
+                      <span className="docGridCardLabel">Last Activity</span>
+                      <span className="docGridCardValue">{formatDate(doc.last_activity_at)}</span>
                     </div>
-                  </td>
-                  <td className="docTdStatus">
-                    <span className={statusPillClass(doc.status)}>{doc.status}</span>
-                  </td>
-                  <td className="docTdActions">
+                    <div className="docGridCardRow">
+                      <span className="docGridCardLabel">Recipients</span>
+                      <div className="docAvatars docGridCardAvatars">
+                        {(Array.isArray(doc.recipients) ? doc.recipients : []).length > 0
+                          ? (doc.recipients || []).map((r, i) => (
+                              <span key={i} className="docAvatar" title={r}>{r}</span>
+                            ))
+                          : <span className="docGridCardValue docGridCardMuted">—</span>}
+                      </div>
+                    </div>
+                    <div className="docGridCardRow docGridCardRowStatus">
+                      <span className="docGridCardLabel">Status</span>
+                      <span className={statusPillClass(doc.status)}>{doc.status}</span>
+                    </div>
+                  </div>
+                  <div className="docGridCardActions">
                     <button type="button" className="docViewLink" onClick={() => setRfpViewRfpid(doc.rfpid)}>View</button>
                     <div className="docKebabWrap" ref={openKebabRfpid === doc.rfpid ? kebabRef : null} style={{ position: "relative", display: "inline-block" }}>
                       <button
@@ -685,7 +1361,7 @@ export default function UploadRFP() {
                         ⋯
                       </button>
                       {openKebabRfpid === doc.rfpid && (
-                        <div className="docKebabDropdown" role="menu">
+                        <div className="docKebabDropdown docKebabDropdownGrid" role="menu">
                           <button
                             type="button"
                             className="docKebabItem docKebabItemDanger"
@@ -708,13 +1384,13 @@ export default function UploadRFP() {
                         </div>
                       )}
                     </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {rfpViewRfpid && (
         <ViewRfpModal rfpid={rfpViewRfpid} onClose={() => setRfpViewRfpid(null)} />
       )}
@@ -754,6 +1430,65 @@ export default function UploadRFP() {
             </div>
             <div className="uploadModalBody">
               <p className="uploadModalHint">Upload an Excel (.xlsx, .xls) or CSV file with questions in column A.</p>
+              <div className="uploadRfpToggleGroup uploadRfpToggleGroupInModal">
+                <label className="uploadRfpToggleRow">
+                  <span className="uploadRfpToggleLabel">Advance search</span>
+                  <button
+                    type="button"
+                    className="uploadRfpInfoIcon"
+                    onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen((v) => !v); setInfoReasoningOpen(false); }}
+                    aria-label="Information about Advance search"
+                    title="Information"
+                  >
+                    <IconInfo />
+                  </button>
+                  {infoAdvanceOpen && (
+                    <div className="uploadRfpInfoPopover" role="tooltip">
+                      When enabled, search uses the Query Intelligence Layer: query cleanup, intent detection, rewriting, domain detection, filters, and optional clarification before retrieval to improve results.
+                      <button type="button" className="uploadRfpInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen(false); }} aria-label="Close">×</button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={advanceSearchEnabled}
+                    className={`uploadRfpToggleSwitch ${advanceSearchEnabled ? "uploadRfpToggleSwitchOn" : ""}`}
+                    onClick={() => setAdvanceSearchEnabled((v) => !v)}
+                  >
+                    <span className="uploadRfpToggleKnob" />
+                  </button>
+                </label>
+                <label className="uploadRfpToggleRow">
+                  <span className="uploadRfpToggleLabel">Reasoning Response</span>
+                  <button
+                    type="button"
+                    className="uploadRfpInfoIcon"
+                    onClick={(e) => { e.preventDefault(); setInfoReasoningOpen((v) => !v); setInfoAdvanceOpen(false); }}
+                    aria-label="Information about Reasoning Response"
+                    title="Information"
+                  >
+                    <IconInfo />
+                  </button>
+                  {infoReasoningOpen && (
+                    <div className="uploadRfpInfoPopover" role="tooltip">
+                      When enabled, search uses the agentic reasoning API: query analysis, multi-query retrieval, reranking, and synthesis to produce a more comprehensive answer.
+                      <button type="button" className="uploadRfpInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoReasoningOpen(false); }} aria-label="Close">×</button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={reasoningResponseEnabled}
+                    className={`uploadRfpToggleSwitch ${reasoningResponseEnabled ? "uploadRfpToggleSwitchOn" : ""}`}
+                    onClick={() => setReasoningResponseEnabled((v) => !v)}
+                  >
+                    <span className="uploadRfpToggleKnob" />
+                  </button>
+                </label>
+              </div>
+              {(infoReasoningOpen || infoAdvanceOpen) && (
+                <div className="uploadRfpInfoBackdrop uploadRfpInfoBackdropInModal" aria-hidden="true" onClick={() => { setInfoReasoningOpen(false); setInfoAdvanceOpen(false); }} />
+              )}
               {uploadError && <div className="uploadModalError">{uploadError}</div>}
               <div
                 className="uploadModalDropzone"
@@ -810,6 +1545,65 @@ export default function UploadRFP() {
                     </select>
                   </label>
                 )}
+                <div className="uploadRfpToggleGroup">
+                  <label className="uploadRfpToggleRow">
+                    <span className="uploadRfpToggleLabel">Advance search</span>
+                    <button
+                      type="button"
+                      className="uploadRfpInfoIcon"
+                      onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen((v) => !v); setInfoReasoningOpen(false); }}
+                      aria-label="Information about Advance search"
+                      title="Information"
+                    >
+                      <IconInfo />
+                    </button>
+                    {infoAdvanceOpen && (
+                      <div className="uploadRfpInfoPopover" role="tooltip">
+                        When enabled, search uses the Query Intelligence Layer: query cleanup, intent detection, rewriting, domain detection, filters, and optional clarification before retrieval to improve results.
+                        <button type="button" className="uploadRfpInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoAdvanceOpen(false); }} aria-label="Close">×</button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={advanceSearchEnabled}
+                      className={`uploadRfpToggleSwitch ${advanceSearchEnabled ? "uploadRfpToggleSwitchOn" : ""}`}
+                      onClick={() => setAdvanceSearchEnabled((v) => !v)}
+                    >
+                      <span className="uploadRfpToggleKnob" />
+                    </button>
+                  </label>
+                  <label className="uploadRfpToggleRow">
+                    <span className="uploadRfpToggleLabel">Reasoning Response</span>
+                    <button
+                      type="button"
+                      className="uploadRfpInfoIcon"
+                      onClick={(e) => { e.preventDefault(); setInfoReasoningOpen((v) => !v); setInfoAdvanceOpen(false); }}
+                      aria-label="Information about Reasoning Response"
+                      title="Information"
+                    >
+                      <IconInfo />
+                    </button>
+                    {infoReasoningOpen && (
+                      <div className="uploadRfpInfoPopover" role="tooltip">
+                        When enabled, search uses the agentic reasoning API: query analysis, multi-query retrieval, reranking, and synthesis to produce a more comprehensive answer.
+                        <button type="button" className="uploadRfpInfoPopoverClose" onClick={(e) => { e.preventDefault(); setInfoReasoningOpen(false); }} aria-label="Close">×</button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={reasoningResponseEnabled}
+                      className={`uploadRfpToggleSwitch ${reasoningResponseEnabled ? "uploadRfpToggleSwitchOn" : ""}`}
+                      onClick={() => setReasoningResponseEnabled((v) => !v)}
+                    >
+                      <span className="uploadRfpToggleKnob" />
+                    </button>
+                  </label>
+                </div>
+                {(infoReasoningOpen || infoAdvanceOpen) && (
+                  <div className="uploadRfpInfoBackdrop" aria-hidden="true" onClick={() => { setInfoReasoningOpen(false); setInfoAdvanceOpen(false); }} />
+                )}
                 <button
                   type="button"
                   className="primaryBtn primaryBtnPurple"
@@ -823,7 +1617,7 @@ export default function UploadRFP() {
                 <button type="button" className="uploadModalClose" onClick={closeQuestionsModal} aria-label="Close">✕</button>
               </div>
             </div>
-            <div className="questionsModalBody">
+            <div className="questionsModalBody bulkQuestionsModalBody">
               {generateError && <div className="uploadModalError" style={{ marginBottom: 12 }}>{generateError}</div>}
               <div className="questionsTableWrap">
                 <table className="questionsTable">
@@ -838,7 +1632,7 @@ export default function UploadRFP() {
                     {paginatedQuestions.map((row) => (
                       <tr key={row.id}>
                         <td className="questionsTdQuestion">{row.question}</td>
-                        <td className="questionsTdAnswer">{row.answer || "—"}</td>
+                        <td className="questionsTdAnswer">{formatBulkAnswerDisplay(row.answer) || "—"}</td>
                         <td className="questionsTdActions">
                           <button type="button" className="questionsKebab" aria-label="More actions">⋯</button>
                         </td>
