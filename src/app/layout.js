@@ -1,27 +1,31 @@
-import { Geist, Geist_Mono } from "next/font/google";
 import "./css/theme.css";
 import "./css/globals.css";
 import { AuthProviderWrapper } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata = {
-  title: "RFP Platform",
+  title: "Kiza",
   description: "RFP document management, search, and audit",
+  icons: {
+    icon: "/kizaheaderlogo.png",
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/kizaheaderlogo.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
+          rel="stylesheet"
+        />
+        <style dangerouslySetInnerHTML={{
+          __html: `:root{--font-geist-sans:'Geist',system-ui,sans-serif;--font-geist-mono:'Geist Mono',monospace}`,
+        }} />
+      </head>
+      <body suppressHydrationWarning>
         <AuthProviderWrapper>{children}</AuthProviderWrapper>
       </body>
     </html>

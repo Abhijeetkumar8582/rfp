@@ -55,6 +55,12 @@
   z-index: 5;
 }
 
+.searchPageHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .searchPageBotName {
   margin: 0;
   font-size: var(--font-size-heading);
@@ -64,6 +70,25 @@
   color: var(--search-text);
   line-height: 1.3;
   user-select: none;
+}
+
+.searchBardNewChatBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--search-border-strong);
+  border-radius: var(--search-radius-sm);
+  background: var(--search-panel);
+  color: var(--search-text);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.searchBardNewChatBtn:hover {
+  border-color: var(--search-primary);
+  background: var(--search-primary-muted);
+  color: var(--search-primary);
 }
 
 .searchPageLangWrap {
@@ -595,68 +620,244 @@
   max-height: 360px;
   overflow: hidden;
   border: 1px solid var(--search-border);
-  border-radius: var(--search-radius-sm);
+  border-radius: 10px;
   background: var(--search-panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .searchReasoningLogTitle {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-heading);
+  font-size: 14px;
+  font-weight: 600;
   font-family: var(--font-family);
-  color: var(--search-muted);
-  padding: 8px 12px;
+  color: var(--search-text);
+  padding: 10px 14px;
   border-bottom: 1px solid var(--search-border);
+  letter-spacing: 0.02em;
+}
+
+.searchReasoningLogLive .searchReasoningLogTitle {
+  color: var(--search-focus, #1a73e8);
+}
+.searchReasoningLogLive {
+  border-color: var(--search-focus, #1a73e8);
+  box-shadow: 0 0 0 1px var(--search-focus, #1a73e8), 0 2px 8px rgba(26, 115, 232, 0.12);
 }
 
 .searchReasoningLogLines {
-  padding: 8px 12px;
+  padding: 12px 14px;
   max-height: 300px;
   overflow-y: auto;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.55;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--search-border) transparent;
 }
 .searchReasoningLogLines::-webkit-scrollbar {
-  display: none;
+  width: 6px;
+}
+.searchReasoningLogLines::-webkit-scrollbar-track {
+  background: transparent;
+}
+.searchReasoningLogLines::-webkit-scrollbar-thumb {
+  background: var(--search-border);
+  border-radius: 3px;
 }
 
 .searchReasoningLogLine {
-  margin: 4px 0;
+  margin: 6px 0;
+  padding: 4px 0;
   color: var(--search-text);
+  border-left: 3px solid transparent;
+  padding-left: 10px;
+  margin-left: 0;
 }
 
 .searchReasoningLogLine_status {
   color: #5f6368;
+  border-left-color: #9aa0a6;
+  font-size: 12.5px;
 }
 
 .searchReasoningLogLine_query {
   font-weight: 500;
+  border-left-color: #1a73e8;
+  color: #1a73e8;
 }
 
 .searchReasoningLogLine_confidence {
   color: #1a73e8;
-  font-weight: 500;
+  font-weight: 600;
+  border-left-color: #1a73e8;
 }
 
 .searchReasoningLogLine_question {
   font-weight: 600;
   color: var(--search-text);
+  border-left-color: var(--search-text);
+  font-size: 14px;
+}
+
+.searchReasoningLogLine_analysis {
+  color: #5f6368;
+  border-left-color: #80868b;
+  font-style: italic;
 }
 
 .searchReasoningLogLine_results_header {
-  font-weight: var(--font-weight-heading);
-  font-size: var(--font-size-heading);
+  font-weight: 600;
+  font-size: 13px;
   font-family: var(--font-family);
   color: var(--search-text);
-  margin-top: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--search-border);
+  border-left-color: #34a853;
 }
 
 .searchReasoningLogLine_result_item {
   font-size: 12px;
   color: var(--search-muted);
-  margin-left: 4px;
+  margin-left: 0;
+  padding-left: 14px;
+  border-left-color: transparent;
+}
+
+/* In-popup reasoning log: no title, full height from body */
+.searchReasoningLogInPopup .searchReasoningLogLines {
+  max-height: none;
+  padding: 16px 20px;
+}
+.searchReasoningLogInPopup {
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Sources + Logs row (Sources · Logs) */
+.searchBardSourcesLogsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.searchBardSourcesLogsSep {
+  color: var(--search-muted);
+  font-weight: 400;
+  user-select: none;
+  padding: 0 2px;
+}
+
+.searchBardLogsLink {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #1a73e8;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.searchBardLogsLink:hover {
+  color: #1557b0;
+}
+
+.searchBardLogsLink:focus {
+  outline: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.3);
+}
+
+/* Logs popup (reasoning steps) */
+.searchBardLogsBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.searchBardLogsPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 70vw;
+  max-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--search-panel);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  z-index: 1001;
+  overflow: hidden;
+  border: 1px solid var(--search-border);
+}
+
+.searchBardLogsPopupHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--search-border);
+  background: var(--search-bg-subtle);
+}
+
+.searchBardLogsPopupTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  letter-spacing: 0.03em;
+  color: var(--search-text);
+}
+
+.searchBardLogsPopupClose {
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: var(--search-radius-sm);
+  color: var(--search-muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.searchBardLogsPopupClose:hover {
+  background: var(--search-border);
+  color: var(--search-text);
+}
+
+.searchBardLogsPopupClose:focus {
+  outline: none;
+  box-shadow: var(--search-shadow-focus);
+}
+
+.searchBardLogsPopupBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--search-border) transparent;
+}
+
+.searchBardLogsPopupBody::-webkit-scrollbar {
+  width: 8px;
+}
+.searchBardLogsPopupBody::-webkit-scrollbar-thumb {
+  background: var(--search-border);
+  border-radius: 4px;
 }
 
 .searchBardCopyAll {
@@ -982,6 +1183,114 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--search-muted);
+}
+
+/* Clickable "Sources" link (red) — opens popup with chunks */
+.searchBardSourcesLink {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #c5221f;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.searchBardSourcesLink:hover {
+  color: #a01814;
+}
+
+.searchBardSourcesLink:focus {
+  outline: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(197, 34, 31, 0.3);
+}
+
+/* Sources popup overlay and dialog */
+.searchBardSourcesBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.searchBardSourcesPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--search-panel);
+  border-radius: var(--search-radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  z-index: 1001;
+  overflow: hidden;
+}
+
+.searchBardSourcesPopupHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--search-border);
+  background: var(--search-bg-subtle);
+}
+
+.searchBardSourcesPopupTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  letter-spacing: 0.03em;
+  color: var(--search-text);
+}
+
+.searchBardSourcesPopupClose {
+  padding: 6px;
+  background: none;
+  border: none;
+  border-radius: var(--search-radius-sm);
+  color: var(--search-muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.searchBardSourcesPopupClose:hover {
+  background: var(--search-border);
+  color: var(--search-text);
+}
+
+.searchBardSourcesPopupClose:focus {
+  outline: none;
+  box-shadow: var(--search-shadow-focus);
+}
+
+.searchBardSourcesPopupBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.searchBardSourcesPopupBody::-webkit-scrollbar {
+  display: none;
+}
+
+.searchBardSourcesPopupBody .searchBardResultsList {
+  margin-top: 0;
 }
 
 .searchBardVersionLink {
@@ -1371,6 +1680,23 @@
 .searchBardFeedbackPopupSubmit:hover,
 .searchFeedbackPopupSubmit:hover {
   background: var(--search-primary-hover);
+}
+
+/* Form error (e.g. no project) above footer */
+.searchBardFormError {
+  flex-shrink: 0;
+  padding: 10px 28px;
+  background: rgba(217, 48, 37, 0.08);
+  border-top: 1px solid rgba(217, 48, 37, 0.2);
+  color: #c5221f;
+  font-size: 14px;
+}
+
+/* Conversation thread container */
+.searchBardThread {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 /* ----- Footer: fixed searchbar (always at bottom) ----- */

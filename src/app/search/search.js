@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
-import { activity as activityApi, search as searchApi, projects as projectsApi } from "../../lib/api";
+import { search as searchApi, projects as projectsApi } from "../../lib/api";
 import "../css/SearchSection.css";
 
 function IconUser() {
@@ -182,30 +183,39 @@ function clampPcts(textPct, vectorPct, rerankPct) {
 export default function SearchSection() {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
-  const [submittedQuery, setSubmittedQuery] = useState("");
-  const [hasSearched, setHasSearched] = useState(false);
   const [language, setLanguage] = useState("en");
   const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false);
   const [searchSettingsOpen, setSearchSettingsOpen] = useState(false);
-  const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [reasoningAnswerEnabled, setReasoningAnswerEnabled] = useState(false);
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["filerepo", "projects"],
+    queryFn: () => projectsApi.list(),
+    staleTime: 2 * 60 * 1000,
+  });
   const [advancedSearchEnabled, setAdvancedSearchEnabled] = useState(false);
   const [infoReasoningOpen, setInfoReasoningOpen] = useState(false);
   const [infoAdvanceOpen, setInfoAdvanceOpen] = useState(false);
-  const [searchResults, setSearchResults] = useState(null);
+  const [messages, setMessages] = useState([]); // conversation thread: { role: 'user'|'assistant', content, searchResults?, reasoningLog?, error?, feedback? }
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchError, setSearchError] = useState(null);
-  const [reasoningLog, setReasoningLog] = useState([]);
-  const [userFeedback, setUserFeedback] = useState(null);
-  const [feedbackPopupOpen, setFeedbackPopupOpen] = useState(false);
+  const [feedbackPopupForIndex, setFeedbackPopupForIndex] = useState(null); // index of assistant message for feedback popup
   const [feedbackComment, setFeedbackComment] = useState("");
-  const [feedbackRating, setFeedbackRating] = useState(null); /* 0-9 for "How likely..." */
-  const [feedbackSubmittedToast, setFeedbackSubmittedToast] = useState(false);
+  const [feedbackRating, setFeedbackRating] = useState(null);
+  const [feedbackSubmittedToastForIndex, setFeedbackSubmittedToastForIndex] = useState(null);
+  const [sourcesPopupForIndex, setSourcesPopupForIndex] = useState(null); // index of assistant message for sources popup
+  const [logsPopupForIndex, setLogsPopupForIndex] = useState(null); // index of assistant message for reasoning logs popup
+  const [formError, setFormError] = useState(null); // e.g. "No project available"
+  const [conversationId, setConversationId] = useState(null);
+  const [conversationIdCreatedAt, setConversationIdCreatedAt] = useState(null); // 24h validity
   const [balance, setBalance] = useState({ textPct: 30, vectorPct: 60, rerankPct: 10 });
+  const [liveReasoningLog, setLiveReasoningLog] = useState([]); // real-time stream of reasoning steps while loading
   const balanceRef = React.useRef(null);
   const draggingHandleRef = React.useRef(null);
   const inputRef = React.useRef(null);
+  const contentEndRef = React.useRef(null);
+  const reasoningLogRef = React.useRef([]);
+  const liveReasoningSyncIntervalRef = React.useRef(null);
   const { textPct, vectorPct, rerankPct } = balance;
 
   function getRelevanceLabel(score) {
@@ -215,13 +225,10 @@ export default function SearchSection() {
   }
 
   useEffect(() => {
-    projectsApi.list().then((list) => {
-      setProjects(list || []);
-      if (list?.length > 0 && selectedProjectId == null) {
-        setSelectedProjectId(list[0].id);
-      }
-    }).catch(() => {});
-  }, []);
+    if (projects.length > 0 && selectedProjectId == null) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
 
   const updateBalanceFromX = React.useCallback((clientX, handleIndex) => {
     const el = balanceRef.current;
@@ -272,40 +279,68 @@ export default function SearchSection() {
   ];
   const currentLanguageLabel = languages.find((l) => l.code === language)?.label ?? "English";
 
-  async function handleSubmit(e) {
+  const CONVERSATION_TTL_MS = 24 * 60 * 60 * 1000;
+  const isConversationValid = () => {
+    if (!conversationId || !conversationIdCreatedAt) return false;
+    return Date.now() - conversationIdCreatedAt < CONVERSATION_TTL_MS;
+  };
+  const effectiveConversationId = isConversationValid() ? conversationId : null;
+
+  // Scroll to bottom when messages, loading state, or live reasoning log updates
+  useEffect(() => {
+    contentEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, searchLoading, liveReasoningLog]);
+
+  async function handleSubmit(e, overrideQuery) {
     e?.preventDefault();
-    const q = (query || "").trim();
+    const q = (overrideQuery != null ? String(overrideQuery).trim() : (query || "").trim());
     if (!q) return;
     if (selectedProjectId == null) {
-      setSearchError("No project available. Add a project in File Repository first.");
+      setFormError("No project available. Add a project in File Repository first.");
       return;
     }
-    setSubmittedQuery(q);
-    setHasSearched(true);
-    setSearchError(null);
-    setSearchResults(null);
-    setUserFeedback(null);
-    setFeedbackPopupOpen(false);
+    setFormError(null);
+    if (!isConversationValid() && conversationId) {
+      setConversationId(null);
+      setConversationIdCreatedAt(null);
+    }
+    setQuery("");
+    setFeedbackPopupForIndex(null);
+    setSourcesPopupForIndex(null);
+    setLogsPopupForIndex(null);
     setFeedbackComment("");
     setFeedbackRating(null);
-    setReasoningLog(reasoningAnswerEnabled ? [{ kind: "question", text: `Question: ${q}` }] : []);
+    setMessages((prev) => [...prev, { role: "user", content: q }]);
     setSearchLoading(true);
+    const searchOpts = { k: 20, top_k: 12, advanced_search: advancedSearchEnabled };
+    if (effectiveConversationId) searchOpts.conversation_id = effectiveConversationId;
+    const initialLog = reasoningAnswerEnabled ? [{ kind: "question", text: `Question: ${q}` }] : [];
+    reasoningLogRef.current = initialLog;
+    if (reasoningAnswerEnabled) {
+      setLiveReasoningLog(initialLog);
+      liveReasoningSyncIntervalRef.current = setInterval(() => {
+        setLiveReasoningLog(reasoningLogRef.current.slice());
+      }, 200);
+    }
     try {
       let res;
       if (reasoningAnswerEnabled) {
-        res = await searchApi.reasoningStream(q, selectedProjectId, { k: 20, top_k: 12, advanced_search: advancedSearchEnabled }, {
+        res = await searchApi.reasoningStream(q, selectedProjectId, searchOpts, {
           onEvent: ({ type, data }) => {
             if (type === "status" && data?.message) {
-              setReasoningLog((prev) => [...prev, { kind: "status", text: data.message }]);
+              const stepLabel = data?.step ? `[${data.step}] ` : "";
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "status", text: `${stepLabel}${data.message}` }];
             } else if (type === "query_analysis") {
               const parts = [];
               if (data?.intent) parts.push(`Intent: ${data.intent}`);
               if (data?.domain) parts.push(`Domain: ${data.domain}`);
               if (data?.answer_type) parts.push(`Answer type: ${data.answer_type}`);
-              if (parts.length) setReasoningLog((prev) => [...prev, { kind: "analysis", text: parts.join(", ") }]);
+              if (parts.length) {
+                reasoningLogRef.current = [...reasoningLogRef.current, { kind: "analysis", text: parts.join(", ") }];
+              }
             } else if (type === "search_query" && data?.query) {
               const suffix = data.total > 1 ? ` (${data.index}/${data.total})` : "";
-              setReasoningLog((prev) => [...prev, { kind: "query", text: `Generated question: ${data.query}${suffix}` }]);
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "query", text: `Generated question: ${data.query}${suffix}` }];
             } else if (type === "search_results" && data) {
               const total = data.total ?? 0;
               const items = data.items ?? [];
@@ -317,58 +352,173 @@ export default function SearchSection() {
                   return { kind: "result_item", text: `  • ${item.filename || "document"} (${scorePct}%)${preview}` };
                 }),
               ];
-              setReasoningLog((prev) => [...prev, ...newEntries]);
+              reasoningLogRef.current = [...reasoningLogRef.current, ...newEntries];
             } else if (type === "confidence" && data) {
               const pct = typeof data.overall === "number" ? Math.round(data.overall * 100) : data.overall;
-              setReasoningLog((prev) => [...prev, { kind: "confidence", text: `Confidence: ${pct}%` }]);
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "confidence", text: `Confidence: ${pct}%` }];
             }
           },
         });
       } else {
-        res = await searchApi.answer(q, selectedProjectId, 10, { advanced_search: advancedSearchEnabled });
+        const answerOpts = { advanced_search: advancedSearchEnabled };
+        if (effectiveConversationId) answerOpts.conversation_id = effectiveConversationId;
+        res = await searchApi.answer(q, selectedProjectId, 10, answerOpts);
       }
-      setSearchResults(res);
-      activityApi.create({
-        actor: user?.name || user?.email || "User",
-        event_action: "Search query",
-        target_resource: q.length > 200 ? q.slice(0, 200) + "…" : q,
-        severity: "info",
-        system: "web",
-      }).catch(() => {});
+      if (res?.conversation_id) {
+        setConversationId(res.conversation_id);
+        setConversationIdCreatedAt(Date.now());
+      }
+      const reasoningLog = reasoningLogRef.current;
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: res?.answer ?? "",
+          searchResults: res,
+          reasoningLog: reasoningAnswerEnabled ? reasoningLog : undefined,
+          error: null,
+        },
+      ]);
     } catch (err) {
-      setSearchError(err.message || "Search failed.");
-      setSearchResults(null);
-      setReasoningLog([]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: null,
+          searchResults: null,
+          reasoningLog: undefined,
+          error: err.message || "Search failed.",
+        },
+      ]);
     } finally {
+      if (liveReasoningSyncIntervalRef.current) {
+        clearInterval(liveReasoningSyncIntervalRef.current);
+        liveReasoningSyncIntervalRef.current = null;
+      }
       setSearchLoading(false);
+      setLiveReasoningLog([]);
     }
   }
 
-  async function handleThumbsUp() {
-    const id = searchResults?.search_query_id;
+  async function handleRetry(assistantIdx) {
+    const userMsg = messages[assistantIdx - 1];
+    const q = userMsg?.role === "user" ? userMsg.content.trim() : "";
+    if (!q || selectedProjectId == null) return;
+    setFormError(null);
+    setFeedbackPopupForIndex(null);
+    setSourcesPopupForIndex(null);
+    setLogsPopupForIndex(null);
+    setMessages((prev) => prev.slice(0, assistantIdx));
+    setSearchLoading(true);
+    const searchOpts = { k: 20, top_k: 12, advanced_search: advancedSearchEnabled };
+    if (effectiveConversationId) searchOpts.conversation_id = effectiveConversationId;
+    const initialLog = reasoningAnswerEnabled ? [{ kind: "question", text: `Question: ${q}` }] : [];
+    reasoningLogRef.current = initialLog;
+    if (reasoningAnswerEnabled) {
+      setLiveReasoningLog(initialLog);
+      liveReasoningSyncIntervalRef.current = setInterval(() => {
+        setLiveReasoningLog(reasoningLogRef.current.slice());
+      }, 200);
+    }
+    try {
+      let res;
+      if (reasoningAnswerEnabled) {
+        res = await searchApi.reasoningStream(q, selectedProjectId, searchOpts, {
+          onEvent: ({ type, data }) => {
+            if (type === "status" && data?.message) {
+              const stepLabel = data?.step ? `[${data.step}] ` : "";
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "status", text: `${stepLabel}${data.message}` }];
+            } else if (type === "query_analysis") {
+              const parts = [];
+              if (data?.intent) parts.push(`Intent: ${data.intent}`);
+              if (data?.domain) parts.push(`Domain: ${data.domain}`);
+              if (data?.answer_type) parts.push(`Answer type: ${data.answer_type}`);
+              if (parts.length) {
+                reasoningLogRef.current = [...reasoningLogRef.current, { kind: "analysis", text: parts.join(", ") }];
+              }
+            } else if (type === "search_query" && data?.query) {
+              const suffix = data.total > 1 ? ` (${data.index}/${data.total})` : "";
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "query", text: `Generated question: ${data.query}${suffix}` }];
+            } else if (type === "search_results" && data) {
+              const total = data.total ?? 0;
+              const items = data.items ?? [];
+              reasoningLogRef.current = [
+                ...reasoningLogRef.current,
+                { kind: "results_header", text: `Search results (${total} chunks):` },
+                ...items.map((item) => {
+                  const scorePct = typeof item.score === "number" ? Math.round(item.score * 100) : item.score;
+                  const preview = item.preview ? ` — ${item.preview}` : "";
+                  return { kind: "result_item", text: `  • ${item.filename || "document"} (${scorePct}%)${preview}` };
+                }),
+              ];
+            } else if (type === "confidence" && data) {
+              const pct = typeof data.overall === "number" ? Math.round(data.overall * 100) : data.overall;
+              reasoningLogRef.current = [...reasoningLogRef.current, { kind: "confidence", text: `Confidence: ${pct}%` }];
+            }
+          },
+        });
+      } else {
+        const answerOpts = { advanced_search: advancedSearchEnabled };
+        if (effectiveConversationId) answerOpts.conversation_id = effectiveConversationId;
+        res = await searchApi.answer(q, selectedProjectId, 10, answerOpts);
+      }
+      if (res?.conversation_id) {
+        setConversationId(res.conversation_id);
+        setConversationIdCreatedAt(Date.now());
+      }
+      const reasoningLog = reasoningLogRef.current;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: res?.answer ?? "", searchResults: res, reasoningLog: reasoningAnswerEnabled ? reasoningLog : undefined, error: null },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: null, searchResults: null, reasoningLog: undefined, error: err.message || "Search failed." },
+      ]);
+    } finally {
+      if (liveReasoningSyncIntervalRef.current) {
+        clearInterval(liveReasoningSyncIntervalRef.current);
+        liveReasoningSyncIntervalRef.current = null;
+      }
+      setSearchLoading(false);
+      setLiveReasoningLog([]);
+    }
+  }
+
+  async function handleThumbsUp(msgIndex) {
+    const msg = messages[msgIndex];
+    const id = msg?.searchResults?.search_query_id;
     if (!id) return;
     try {
       await searchApi.submitFeedback(id, { feedback_status: "positive", feedback_score: 1 });
-      setUserFeedback("positive");
-      setFeedbackSubmittedToast(true);
-      setTimeout(() => setFeedbackSubmittedToast(false), 4000);
+      setMessages((prev) => {
+        const next = [...prev];
+        if (next[msgIndex]?.role === "assistant") next[msgIndex] = { ...next[msgIndex], feedback: "positive" };
+        return next;
+      });
+      setFeedbackSubmittedToastForIndex(msgIndex);
+      setTimeout(() => setFeedbackSubmittedToastForIndex(null), 4000);
     } catch (e) {
       console.warn("Feedback failed:", e);
     }
   }
 
-  function handleThumbsDown() {
-    setFeedbackPopupOpen(true);
+  function handleThumbsDown(msgIndex) {
+    setFeedbackPopupForIndex(msgIndex);
   }
 
   function closeFeedbackPopup() {
-    setFeedbackPopupOpen(false);
+    setFeedbackPopupForIndex(null);
     setFeedbackComment("");
     setFeedbackRating(null);
   }
 
   async function handleFeedbackSubmit() {
-    const id = searchResults?.search_query_id;
+    const msgIndex = feedbackPopupForIndex;
+    if (msgIndex == null) return;
+    const msg = messages[msgIndex];
+    const id = msg?.searchResults?.search_query_id;
     if (!id) return;
     try {
       await searchApi.submitFeedback(id, {
@@ -376,36 +526,56 @@ export default function SearchSection() {
         feedback_score: feedbackRating != null ? feedbackRating : -1,
         feedback_text: feedbackComment.trim() || undefined,
       });
-      setUserFeedback("negative");
+      setMessages((prev) => {
+        const next = [...prev];
+        if (next[msgIndex]?.role === "assistant") next[msgIndex] = { ...next[msgIndex], feedback: "negative" };
+        return next;
+      });
       closeFeedbackPopup();
-      setFeedbackSubmittedToast(true);
-      setTimeout(() => setFeedbackSubmittedToast(false), 4000);
+      setFeedbackSubmittedToastForIndex(msgIndex);
+      setTimeout(() => setFeedbackSubmittedToastForIndex(null), 4000);
     } catch (e) {
       console.warn("Feedback failed:", e);
     }
   }
 
-  function handleCopyResults() {
+  function handleCopyResults(msg) {
+    const res = msg?.searchResults;
     const parts = [];
-    if (searchResults?.answer) {
-      parts.push("Answer:\n" + searchResults.answer);
-    }
-    if (searchResults?.results?.length) {
+    if (res?.answer) parts.push("Answer:\n" + res.answer);
+    if (res?.results?.length) {
       parts.push(
         "Sources:\n" +
-        searchResults.results
-          .map((r, i) => `[${i + 1}] ${r.filename} (score: ${r.score})\n${r.content}`)
-          .join("\n\n---\n\n")
+        res.results.map((r, i) => `[${i + 1}] ${r.filename} (score: ${r.score})\n${r.content}`).join("\n\n---\n\n")
       );
     }
     if (parts.length) navigator.clipboard?.writeText(parts.join("\n\n"));
+  }
+
+  function handleNewChat() {
+    setMessages([]);
+    setConversationId(null);
+    setConversationIdCreatedAt(null);
+    setFeedbackPopupForIndex(null);
+    setSourcesPopupForIndex(null);
+    setLogsPopupForIndex(null);
+    setFormError(null);
+    setFeedbackComment("");
+    setFeedbackRating(null);
   }
 
   return (
     <div className="searchPageBard">
       {/* Top header: bot name + language selector */}
       <header className="searchPageTopHeader">
-        <h1 className="searchPageBotName">RFP Assistant</h1>
+        <div className="searchPageHeaderLeft">
+          <h1 className="searchPageBotName">RFP Assistant</h1>
+          {messages.length > 0 && (
+            <button type="button" className="searchBardNewChatBtn" onClick={handleNewChat} aria-label="New conversation">
+              New chat
+            </button>
+          )}
+        </div>
         <div className="searchPageHeaderRight">
           <label className="searchPageReasoningToggle">
             <span className="searchPageReasoningLabel">Reasoning Response</span>
@@ -565,193 +735,264 @@ export default function SearchSection() {
       </header>
 
       <div className="searchPageBardContent">
-        {/* Header: user query (shown after search) */}
-        {hasSearched && submittedQuery && (
-          <header className="searchBardHeader">
-            <div className="searchBardHeaderAvatar">
-              <IconUser />
-            </div>
-            <p className="searchBardHeaderQuery">{submittedQuery}</p>
-            <button
-              type="button"
-              className="searchBardHeaderEdit"
-              aria-label="Edit query"
-              onClick={() => {
-                setQuery(submittedQuery);
-                setTimeout(() => inputRef.current?.focus(), 0);
-              }}
-            >
-              <IconEdit />
-            </button>
-          </header>
-        )}
-
-        {/* Main: search results from ChromaDB (question embedding vs document embeddings) */}
-        {hasSearched && (
-          <section className="searchBardResponse">
-            <div className="searchBardResponseInner">
-              <div className="searchBardResponseAvatar">
-                <IconStar />
-              </div>
-              <div className="searchBardResponseBody">
-                {searchLoading && !reasoningAnswerEnabled && (
-                  <p className="searchBardLoadingStatus" role="status" aria-live="polite">
-                    Searching your documents and generating an answer…
-                  </p>
-                )}
-                {reasoningLog.length > 0 && (
-                  <div className="searchReasoningLog" role="log" aria-live="polite">
-                    <div className="searchReasoningLogTitle">Reasoning</div>
-                    <div className="searchReasoningLogLines">
-                      {reasoningLog.map((entry, i) => (
-                        <div key={i} className={`searchReasoningLogLine searchReasoningLogLine_${entry.kind}`}>
-                          {entry.text}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {searchLoading && reasoningAnswerEnabled && reasoningLog.length === 0 && (
-                  <p className="searchBardLoadingStatus" role="status" aria-live="polite">
-                    Running agentic reasoning (query analysis, multi-search, reranking, synthesis)…
-                  </p>
-                )}
-                {searchError && (
-                  <div>
-                    <p className="searchBardSearchError" role="alert">{searchError}</p>
-                    <button type="button" className="searchBardRetryBtn" onClick={() => handleSubmit()}>
-                      Try again
-                    </button>
-                  </div>
-                )}
-                {!searchLoading && searchResults && (
-                  <>
-                    {searchResults.answer != null && searchResults.answer !== "" && (
-                      <div className="searchBardAnswerWrap">
-                        <p className="searchBardAnswer">{searchResults.answer}</p>
-                        {searchResults.uncertainty_note && (
-                          <p className="searchBardUncertainty">Note: {searchResults.uncertainty_note}</p>
-                        )}
-                        {searchResults.missing_info_note && (
-                          <p className="searchBardMissingInfo">Missing info: {searchResults.missing_info_note}</p>
-                        )}
-                        {searchResults.clarification_suggested && (
-                          <p className="searchBardClarification">Consider rephrasing or clarifying your question.</p>
-                        )}
-                        <div className="searchBardAnswerActions">
-                          {searchResults.search_query_id != null && (
-                            <div className="searchBardFeedbackBtns">
-                              <button
-                                type="button"
-                                className={`searchBardFeedbackBtn ${userFeedback === "positive" ? "searchBardFeedbackBtnActive" : ""}`}
-                                onClick={handleThumbsUp}
-                                title="Helpful"
-                                aria-label="Helpful"
-                              >
-                                <IconThumbsUp />
-                              </button>
-                              <button
-                                type="button"
-                                className={`searchBardFeedbackBtn ${userFeedback === "negative" ? "searchBardFeedbackBtnActive" : ""}`}
-                                onClick={handleThumbsDown}
-                                title="Not helpful"
-                                aria-label="Not helpful"
-                              >
-                                <IconThumbsDown />
-                              </button>
-                            </div>
-                          )}
-                          <button type="button" className="searchBardActionBtn searchBardCopyAll" onClick={handleCopyResults} title="Copy answer and sources">
-                            <IconCopy /> Copy all
-                          </button>
-                        </div>
-                        {feedbackSubmittedToast && (
-                          <p className="searchBardFeedbackToast" role="status">Thanks for your feedback.</p>
-                        )}
-                        {feedbackPopupOpen && (
-                          <>
-                            <div className="searchBardFeedbackBackdrop" onClick={closeFeedbackPopup} aria-hidden="true" />
-                            <div className="searchBardFeedbackPopup" role="dialog" aria-label="Feedback">
-                              <button type="button" className="searchBardFeedbackPopupClose" onClick={closeFeedbackPopup} aria-label="Close">
-                                <IconClose />
-                              </button>
-                              <h3 className="searchBardFeedbackPopupTitle">How likely are you to answer to this question?</h3>
-                              <div className="searchBardFeedbackScale">
-                                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                                  <button
-                                    key={n}
-                                    type="button"
-                                    className={`searchBardFeedbackScaleBtn ${feedbackRating === n ? "searchBardFeedbackScaleBtnSelected" : ""}`}
-                                    onClick={() => setFeedbackRating(n)}
-                                  >
-                                    {n}
-                                  </button>
-                                ))}
-                              </div>
-                              <div className="searchBardFeedbackScaleLabels">
-                                <span>Not likely at all</span>
-                                <span>Extremely likely</span>
-                              </div>
-                              <h4 className="searchBardFeedbackImproveTitle">Tell us how we can improve</h4>
-                              <textarea
-                                className="searchBardFeedbackTextarea"
-                                placeholder="Write your message here"
-                                value={feedbackComment}
-                                onChange={(e) => setFeedbackComment(e.target.value)}
-                                rows={3}
-                              />
-                              <div className="searchBardFeedbackPopupActions">
-                                <button type="button" className="searchBardFeedbackPopupCancel" onClick={closeFeedbackPopup}>
-                                  Skip
-                                </button>
-                                <button type="button" className="searchBardFeedbackPopupSubmit" onClick={handleFeedbackSubmit}>
-                                  Submit
-                                </button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    <span className="searchBardSourcesTitle">
-                      Sources ({searchResults.results?.length ?? 0} chunks from your knowledge base)
-                    </span>
-                    <div className="searchBardResultsList">
-                      {searchResults.results?.length === 0 ? (
-                        <p className="searchBardNoResults">No matching chunks. Try a different question or train the datasource for this project.</p>
-                      ) : (
-                        searchResults.results?.map((r, i) => {
-                          const relevance = getRelevanceLabel(r.score);
-                          return (
-                            <div key={i} className="searchBardResultItem">
-                              <div className="searchBardResultMeta">
-                                <span className="searchBardResultFile">{r.filename || "Document"}</span>
-                                <span className={`searchBardResultRelevance ${relevance.className}`}>{relevance.label}</span>
-                                <span className="searchBardResultScore">score: {r.score.toFixed(2)}</span>
-                              </div>
-                              <p className="searchBardResultContent">{r.content}</p>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Empty state: show when no search yet */}
-        {!hasSearched && (
+        {/* Conversation thread: user and assistant messages for same conversationId */}
+        {messages.length === 0 && !searchLoading && (
           <div className="searchBardEmpty">
             <div className="searchBardEmptyAvatar">
               <IconStar />
             </div>
-            <p className="searchBardEmptyText">Ask a question to search across your documents. Your question is embedded, matched against chunk embeddings, and answered by GPT using the top matches.</p>
+            <p className="searchBardEmptyText">Hello, I’m John. How may I assist you today?</p>
           </div>
         )}
+
+        {messages.length > 0 && (
+          <div className="searchBardThread">
+            {messages.map((msg, idx) => {
+              if (msg.role === "user") {
+                return (
+                  <header key={idx} className="searchBardHeader">
+                    <div className="searchBardHeaderAvatar">
+                      <IconUser />
+                    </div>
+                    <p className="searchBardHeaderQuery">{msg.content}</p>
+                    <button
+                      type="button"
+                      className="searchBardHeaderEdit"
+                      aria-label="Edit query"
+                      onClick={() => {
+                        setQuery(msg.content);
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                      }}
+                    >
+                      <IconEdit />
+                    </button>
+                  </header>
+                );
+              }
+              const res = msg.searchResults;
+              const hasAnswer = res?.answer != null && res.answer !== "";
+              return (
+                <section key={idx} className="searchBardResponse">
+                  <div className="searchBardResponseInner">
+                    <div className="searchBardResponseAvatar">
+                      <IconStar />
+                    </div>
+                    <div className="searchBardResponseBody">
+                      {msg.error && (
+                        <div>
+                          <p className="searchBardSearchError" role="alert">{msg.error}</p>
+                          <button type="button" className="searchBardRetryBtn" onClick={() => handleRetry(idx)}>
+                            Try again
+                          </button>
+                        </div>
+                      )}
+                      {!msg.error && hasAnswer && (
+                        <div className="searchBardAnswerWrap">
+                          <p className="searchBardAnswer">{res.answer}</p>
+                          {res.uncertainty_note && <p className="searchBardUncertainty">Note: {res.uncertainty_note}</p>}
+                          {res.missing_info_note && <p className="searchBardMissingInfo">Missing info: {res.missing_info_note}</p>}
+                          {res.clarification_suggested && <p className="searchBardClarification">Consider rephrasing or clarifying your question.</p>}
+                          <div className="searchBardAnswerActions">
+                            {res.search_query_id != null && (
+                              <div className="searchBardFeedbackBtns">
+                                <button
+                                  type="button"
+                                  className={`searchBardFeedbackBtn ${msg.feedback === "positive" ? "searchBardFeedbackBtnActive" : ""}`}
+                                  onClick={() => handleThumbsUp(idx)}
+                                  title="Helpful"
+                                  aria-label="Helpful"
+                                >
+                                  <IconThumbsUp />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`searchBardFeedbackBtn ${msg.feedback === "negative" ? "searchBardFeedbackBtnActive" : ""}`}
+                                  onClick={() => handleThumbsDown(idx)}
+                                  title="Not helpful"
+                                  aria-label="Not helpful"
+                                >
+                                  <IconThumbsDown />
+                                </button>
+                              </div>
+                            )}
+                            <button type="button" className="searchBardActionBtn searchBardCopyAll" onClick={() => handleCopyResults(msg)} title="Copy answer and sources">
+                              <IconCopy /> Copy all
+                            </button>
+                          </div>
+                          {feedbackSubmittedToastForIndex === idx && (
+                            <p className="searchBardFeedbackToast" role="status">Thanks for your feedback.</p>
+                          )}
+                          {feedbackPopupForIndex === idx && (
+                            <>
+                              <div className="searchBardFeedbackBackdrop" onClick={closeFeedbackPopup} aria-hidden="true" />
+                              <div className="searchBardFeedbackPopup" role="dialog" aria-label="Feedback">
+                                <button type="button" className="searchBardFeedbackPopupClose" onClick={closeFeedbackPopup} aria-label="Close">
+                                  <IconClose />
+                                </button>
+                                <h3 className="searchBardFeedbackPopupTitle">How likely are you to answer to this question?</h3>
+                                <div className="searchBardFeedbackScale">
+                                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                                    <button
+                                      key={n}
+                                      type="button"
+                                      className={`searchBardFeedbackScaleBtn ${feedbackRating === n ? "searchBardFeedbackScaleBtnSelected" : ""}`}
+                                      onClick={() => setFeedbackRating(n)}
+                                    >
+                                      {n}
+                                    </button>
+                                  ))}
+                                </div>
+                                <div className="searchBardFeedbackScaleLabels">
+                                  <span>Not likely at all</span>
+                                  <span>Extremely likely</span>
+                                </div>
+                                <h4 className="searchBardFeedbackImproveTitle">Tell us how we can improve</h4>
+                                <textarea
+                                  className="searchBardFeedbackTextarea"
+                                  placeholder="Write your message here"
+                                  value={feedbackComment}
+                                  onChange={(e) => setFeedbackComment(e.target.value)}
+                                  rows={3}
+                                />
+                                <div className="searchBardFeedbackPopupActions">
+                                  <button type="button" className="searchBardFeedbackPopupCancel" onClick={closeFeedbackPopup}>Skip</button>
+                                  <button type="button" className="searchBardFeedbackPopupSubmit" onClick={handleFeedbackSubmit}>Submit</button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {!msg.error && res && (
+                        <>
+                          <div className="searchBardSourcesLogsRow">
+                            <button
+                              type="button"
+                              className="searchBardSourcesLink"
+                              onClick={() => setSourcesPopupForIndex(sourcesPopupForIndex === idx ? null : idx)}
+                              aria-label={`View ${res.results?.length ?? 0} source chunks`}
+                            >
+                              Sources
+                            </button>
+                            {msg.reasoningLog?.length > 0 && (
+                              <>
+                                <span className="searchBardSourcesLogsSep" aria-hidden="true">·</span>
+                                <button
+                                  type="button"
+                                  className="searchBardLogsLink"
+                                  onClick={() => setLogsPopupForIndex(logsPopupForIndex === idx ? null : idx)}
+                                  aria-label="View reasoning steps"
+                                >
+                                  Logs
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {sourcesPopupForIndex === idx && (
+                            <>
+                              <div className="searchBardSourcesBackdrop" onClick={() => setSourcesPopupForIndex(null)} aria-hidden="true" />
+                              <div className="searchBardSourcesPopup" role="dialog" aria-label="Source chunks from knowledge base">
+                                <div className="searchBardSourcesPopupHeader">
+                                  <h3 className="searchBardSourcesPopupTitle">Sources ({res.results?.length ?? 0} chunks from your knowledge base)</h3>
+                                  <button type="button" className="searchBardSourcesPopupClose" onClick={() => setSourcesPopupForIndex(null)} aria-label="Close">
+                                    <IconClose />
+                                  </button>
+                                </div>
+                                <div className="searchBardSourcesPopupBody">
+                                  {res.results?.length === 0 ? (
+                                    <p className="searchBardNoResults">No matching chunks. Try a different question or train the datasource for this project.</p>
+                                  ) : (
+                                    <div className="searchBardResultsList">
+                                      {res.results?.map((r, i) => {
+                                        const relevance = getRelevanceLabel(r.score);
+                                        return (
+                                          <div key={i} className="searchBardResultItem">
+                                            <div className="searchBardResultMeta">
+                                              <span className="searchBardResultFile">{r.filename || "Document"}</span>
+                                              <span className={`searchBardResultRelevance ${relevance.className}`}>{relevance.label}</span>
+                                              <span className="searchBardResultScore">score: {r.score.toFixed(2)}</span>
+                                            </div>
+                                            <p className="searchBardResultContent">{r.content}</p>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          {logsPopupForIndex === idx && msg.reasoningLog?.length > 0 && (
+                            <>
+                              <div className="searchBardLogsBackdrop" onClick={() => setLogsPopupForIndex(null)} aria-hidden="true" />
+                              <div className="searchBardLogsPopup" role="dialog" aria-label="Reasoning steps">
+                                <div className="searchBardLogsPopupHeader">
+                                  <h3 className="searchBardLogsPopupTitle">Reasoning</h3>
+                                  <button type="button" className="searchBardLogsPopupClose" onClick={() => setLogsPopupForIndex(null)} aria-label="Close">
+                                    <IconClose />
+                                  </button>
+                                </div>
+                                <div className="searchBardLogsPopupBody">
+                                  <div className="searchReasoningLog searchReasoningLogInPopup" role="log">
+                                    <div className="searchReasoningLogLines">
+                                      {msg.reasoningLog.map((entry, i) => (
+                                        <div key={i} className={`searchReasoningLogLine searchReasoningLogLine_${entry.kind}`}>
+                                          {entry.text}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+
+            {/* Loading indicator for current request */}
+            {searchLoading && (
+              <section className="searchBardResponse">
+                <div className="searchBardResponseInner">
+                  <div className="searchBardResponseAvatar">
+                    <IconStar />
+                  </div>
+                  <div className="searchBardResponseBody">
+                    {reasoningAnswerEnabled && liveReasoningLog.length > 0 ? (
+                      <div className="searchReasoningLog searchReasoningLogLive" role="log" aria-live="polite">
+                        <div className="searchReasoningLogTitle">Reasoning (live)</div>
+                        <div className="searchReasoningLogLines">
+                          {liveReasoningLog.map((entry, i) => (
+                            <div key={i} className={`searchReasoningLogLine searchReasoningLogLine_${entry.kind}`}>
+                              {entry.text}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="searchBardLoadingStatus" role="status" aria-live="polite">
+                        {reasoningAnswerEnabled ? "Running agentic reasoning (query analysis, multi-search, reranking, synthesis)…" : "Searching your documents and generating an answer…"}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        <div ref={contentEndRef} aria-hidden="true" />
       </div>
+
+      {formError && (
+        <div className="searchBardFormError" role="alert">
+          {formError}
+        </div>
+      )}
 
       {/* Footer: input bar (always visible) */}
       <footer className="searchBardFooter">

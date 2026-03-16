@@ -126,7 +126,7 @@
 .frTrainDatasourceBtn:hover {
   /* border-color: var(--brand); */
   background: #079b3d;
-  /* color: var(--brand); */
+  /* color: var(--brand);u */
 }
 
 /* Cluster view — powered by vector similarity */
@@ -397,6 +397,56 @@
 
 .cellMuted {
   color: var(--muted);
+}
+
+/* FAQs table: 50:50 split for question and answer columns, fixed row height */
+.frTable--faqs {
+  table-layout: fixed;
+}
+
+.frTable--faqs thead th:nth-child(1),
+.frTable--faqs thead th:nth-child(2),
+.frTable--faqs tbody td:nth-child(1),
+.frTable--faqs tbody td:nth-child(2) {
+  width: 50%;
+  box-sizing: border-box;
+}
+
+.frTable--faqs tbody tr {
+  height: 300px;
+}
+
+.frTable--faqs tbody td {
+  height: 300px;
+  max-height: 300px;
+  vertical-align: top;
+  padding: 0;
+}
+
+.frTable--faqs tbody td .frFaqCellInner {
+  height: 300px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 16px;
+  box-sizing: border-box;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.frTable--faqs tbody td .frFaqCellInner::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.frFaqQuestion {
+  font-weight: 500;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.frFaqAnswer {
+  color: var(--muted);
+  word-break: break-word;
+  white-space: pre-wrap;
 }
 
 .wFolder { width: 22%; }
@@ -829,16 +879,38 @@
   color: var(--accent);
 }
 
-/* File detail overlay — Meta / Chunks / Retriever */
+/* Viewer: file name is not clickable (no chunks/meta detail) */
+.frFileNameBtn--readOnly {
+  cursor: default;
+  font-weight: 600;
+  color: var(--text, #1a1a1a);
+}
+.frFileNameBtn--readOnly:hover {
+  text-decoration: none;
+  color: var(--text, #1a1a1a);
+}
+
+/* File detail overlay — Meta / Chunks / Retriever (rendered in body via portal) */
 .frFileDetailOverlay {
   position: fixed;
-  inset: 0;
-  z-index: 100;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  overflow-y: auto;
+  overflow: auto;
+  box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.frFileDetailOverlay::-webkit-scrollbar {
+  display: none;
 }
 
 .frFileDetailBackdrop {
@@ -853,8 +925,10 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 900px;
+  max-width: min(900px, calc(100vw - 48px));
+  min-width: 0;
   max-height: 90vh;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -862,6 +936,7 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .frFileDetailHeader {
@@ -912,7 +987,9 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 520px;
+  max-width: min(520px, calc(100vw - 48px));
+  min-width: 0;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -920,6 +997,7 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .frAddFileBody {
@@ -927,6 +1005,8 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .frAddFileProgress {
@@ -974,13 +1054,167 @@
   cursor: not-allowed;
 }
 
+/* Document settings modal (step 2) — production-ready corporate styling */
+.frDocumentSettingsPanel {
+  max-width: min(480px, calc(100vw - 48px));
+}
+
+.frDocSettingsHeader {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.frDocSettingsHeader .frFileDetailTitle {
+  margin: 0;
+  font-size: var(--text-h3);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.frDocSettingsSubtitle {
+  margin: 4px 0 0;
+  font-size: var(--text-secondary);
+  font-weight: var(--font-weight-regular);
+  color: var(--muted);
+  line-height: var(--line-height-body);
+}
+
+.frDocSettingsBody {
+  padding: 20px 24px;
+  gap: 20px;
+}
+
+.frDocSettingsSection {
+  padding: 18px 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--soft);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.frDocSettingsSection:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand-tint);
+}
+
+.frDocSettingsSection[aria-invalid="true"] {
+  border-color: rgba(220, 38, 38, 0.5);
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.frDocSettingsLabel {
+  display: block;
+  font-size: var(--text-secondary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+  margin: 0 0 6px;
+  letter-spacing: 0.01em;
+}
+
+.frDocSettingsHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.frDocSettingsSelect {
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.frDocSettingsSelect:hover,
+.frDocSettingsSelect:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+
+.frDocSettingsFieldHint {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.frDocSettingsInput {
+  width: 100%;
+  max-width: 140px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--text-secondary);
+  font-weight: var(--font-weight-medium);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.frDocSettingsInput:hover,
+.frDocSettingsInput:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-tint);
+}
+
+.frDocSettingsInputInvalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.frDocSettingsInputInvalid:hover,
+.frDocSettingsInputInvalid:focus {
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.frDocSettingsError {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: #b91c1c;
+  line-height: 1.4;
+}
+
+.frDocSettingsFooter {
+  padding: 18px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  gap: 14px;
+}
+
+.frDocSettingsPrimaryBtn {
+  min-width: 140px;
+  padding: 12px 20px;
+  font-size: var(--text-btn-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* Train datasource modal */
 .frTrainDatasourcePanel {
-  max-width: 480px;
+  max-width: min(480px, calc(100vw - 48px));
+  min-width: 0;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .frTrainDatasourceForm {
@@ -999,6 +1233,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.frTrainDatasourceBody::-webkit-scrollbar {
+  display: none;
 }
 
 .frTrainDatasourcePanel .frAddFileFooter {
@@ -1278,6 +1517,15 @@
     display: none;
   }
 
+  .frFileDetailOverlay {
+    padding: 16px;
+  }
+
+  .frAddFilePanel,
+  .frFileDetailPanel,
+  .frTrainDatasourcePanel {
+    max-width: calc(100vw - 32px);
+  }
 
   .frFileDetailPanel {
     max-height: 85vh;

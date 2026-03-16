@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState, useCallback, useId } from "react";
+import React, { useEffect, useState, useId } from "react";
+import { useQuery } from "@tanstack/react-query";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
 import { activity as activityApi, dashboard as dashboardApi } from "../../lib/api";
@@ -247,47 +248,40 @@ const METRIC_ICON_COLORS = {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [metrics, setMetrics] = useState(null);
-  const [chartData, setChartData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [chartsLoading, setChartsLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [days, setDays] = useState(28);
-  const [dataUpdated, setDataUpdated] = useState(null);
   const confidenceGradientId = useId().replace(/:/g, "-");
+  const projectId = null;
 
-  const fetchMetrics = useCallback(async (projectId = null, daysVal = 28) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await dashboardApi.getMetrics(projectId, daysVal);
-      setMetrics(data != null && typeof data === "object" ? data : null);
-      setDataUpdated(new Date());
-    } catch (e) {
-      setError(e?.message || "Failed to load dashboard metrics");
-      setMetrics(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const {
+    data: metrics,
+    isLoading: loading,
+    isError: metricsError,
+    error: metricsErr,
+    refetch: refetchMetrics,
+    dataUpdatedAt,
+  } = useQuery({
+    queryKey: ["dashboard", "metrics", projectId, days],
+    queryFn: () => dashboardApi.getMetrics(projectId, days),
+    staleTime: 2 * 60 * 1000,
+  });
 
-  const fetchChartData = useCallback(async (projectId = null, daysVal = 28) => {
-    setChartsLoading(true);
-    try {
-      const data = await dashboardApi.getChartData(projectId, daysVal);
-      const normalized = normalizeChartData(data != null && typeof data === "object" ? data : {});
-      setChartData(normalized);
-    } catch (err) {
-      try {
-        if (typeof process !== "undefined" && process.env?.NODE_ENV === "development") {
-          console.warn("[Dashboard] Chart data fetch failed:", err?.message ?? err);
-        }
-      } catch (_) { /* noop in case process/env access throws */ }
-      setChartData(emptyChartData());
-    } finally {
-      setChartsLoading(false);
-    }
-  }, []);
+  const {
+    data: rawChartData,
+    isLoading: chartsLoading,
+    refetch: refetchCharts,
+  } = useQuery({
+    queryKey: ["dashboard", "chart", projectId, days],
+    queryFn: async () => {
+      const data = await dashboardApi.getChartData(projectId, days);
+      return normalizeChartData(data != null && typeof data === "object" ? data : {});
+    },
+    staleTime: 2 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
+  });
+
+  const chartData = rawChartData ?? emptyChartData();
+  const error = metricsError ? (metricsErr?.message || "Failed to load dashboard metrics") : null;
+  const dataUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   useEffect(() => {
     if (typeof activityApi?.create !== "function") return;
@@ -300,14 +294,9 @@ export default function Dashboard() {
     }).catch(() => {});
   }, [user?.name, user?.email]);
 
-  useEffect(() => {
-    fetchMetrics(null, days);
-    fetchChartData(null, days);
-  }, [days, fetchMetrics, fetchChartData]);
-
   const retry = () => {
-    fetchMetrics(null, days);
-    fetchChartData(null, days);
+    refetchMetrics();
+    refetchCharts();
   };
 
   const answerStatusColors = (status, index) => {
@@ -400,7 +389,7 @@ export default function Dashboard() {
     });
 
     const LOW_BOUND = 100;
-    const HIGH_BOUND = 40000;
+    const HIGH_BOUND = 2000;
 
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
       // No real data: fixed neutral scale so all cells render in grey
@@ -427,7 +416,7 @@ export default function Dashboard() {
       <>
         <header className="headerRow">
           <div>
-            <h1 className="pageTitle">RFP Dashboard</h1>
+            <h1 className="pageTitle">Dashboard</h1>
             <div className="pageSub">Search & answer metrics overview</div>
           </div>
 

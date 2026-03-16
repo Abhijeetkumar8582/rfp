@@ -1,4 +1,4 @@
-import IntelligenceHubSkeleton from "./IntelligenceHub";
+import IntelligenceHub from "./IntelligenceHub";
 
 export const metadata = {
   title: "Intelligence Hub",
@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function IntelligenceHubPage() {
-  return <IntelligenceHubSkeleton />;
+  return <IntelligenceHub />;
 }

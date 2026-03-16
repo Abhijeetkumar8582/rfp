@@ -154,10 +154,6 @@ export const auth = {
     return data;
   },
 
-  async register(email, name, password) {
-    return authFetch("/api/v1/auth/register", { email, name, password });
-  },
-
   async logout() {
     const refresh = getRefreshToken();
     if (refresh) {
@@ -174,6 +170,82 @@ export const auth = {
     clearTokens();
   },
 };
+
+/**
+ * Decode invite JWT payload without verification (display only).
+ * Returns { email, name } or null if token is not a valid JWT or missing email.
+ * Do not use for auth — backend verifies the token.
+ */
+export function decodeInviteTokenPayload(token) {
+  if (!token || typeof token !== "string") return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(base64);
+    const data = JSON.parse(json);
+    if (data.email == null) return null;
+    return { email: data.email, name: data.name || "" };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate invite token (unauthenticated). Returns { email, name, expires_at } if valid.
+ * Used by /set-password page to confirm link is not used/revoked.
+ */
+export async function validateInvite(token) {
+  const url = `${API_BASE}/api/v1/auth/invite/validate?${new URLSearchParams({ token }).toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const json = await res.json();
+      detail = json.detail || String(json.detail || res.statusText);
+    } catch {
+      const text = await res.text();
+      if (text) detail = text;
+    }
+    throw new Error(detail || "Invalid or expired link");
+  }
+  return res.json();
+}
+
+/**
+ * Complete invite: set password and activate account (unauthenticated).
+ * Stores tokens and returns { access_token, refresh_token, user } so caller can refresh auth state and redirect.
+ */
+export async function completeInvite({ token, new_password }) {
+  const res = await fetch(`${API_BASE}/api/v1/auth/invite/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const json = await res.json();
+      detail = json.detail || (Array.isArray(json.detail) ? json.detail.map((d) => d.msg || d).join(" ") : String(json.detail || res.statusText));
+    } catch {
+      const text = await res.text();
+      if (text) detail = text;
+    }
+    throw new Error(detail || "Request failed");
+  }
+  const data = await res.json();
+  setTokens(data.access_token, data.refresh_token, data.user);
+  return data;
+}
+
+/** Create a new user invite (backend creates user, sends set-password email). */
+export async function createUserInvite(body) {
+  return apiFetch("/api/v1/users/invite", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
 
 // Users — list from users table (requires auth)
 export const users = {
@@ -206,12 +278,21 @@ export const users = {
     });
   },
 
-  /** Deactivate user (soft delete). */
-  async delete(userId) {
-    return apiFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-    });
+  /**
+   * Delete user.
+   * @param {string} userId
+   * @param {{ permanent?: boolean }} [options] - permanent: true to hard delete (remove from DB); default soft delete (deactivate).
+   */
+  async delete(userId, options = {}) {
+    const q = new URLSearchParams();
+    if (options.permanent) q.set("permanent", "true");
+    const query = q.toString();
+    const url = `/api/v1/users/${encodeURIComponent(userId)}${query ? `?${query}` : ""}`;
+    return apiFetch(url, { method: "DELETE" });
   },
+
+  /** Create a new user invite (backend creates user, sends set-password email). */
+  createInvite: createUserInvite,
 };
 
 // Projects
@@ -423,7 +504,7 @@ export const dashboard = {
    * Questions that were not answered by the search (knowledge gaps).
    * @param {string} [projectId]
    * @param {number} [days=28]
-   * @returns {Promise<{ items: Array<{ query_text: string, ts: string, no_answer_reason: string|null }> }>}
+   * @returns {Promise<{ items: Array<{ id: number, query_text: string, datetime: string, no_answer_reason: string|null }> }>}
    */
   async getKnowledgeGaps(projectId = null, days = 28) {
     const params = new URLSearchParams();
@@ -431,6 +512,40 @@ export const dashboard = {
     if (days != null) params.set("days", String(days));
     const q = params.toString() ? `?${params.toString()}` : "";
     return apiFetch(`/api/v1/analytics/knowledge-gaps${q}`);
+  },
+
+  /**
+   * List all FAQs (for Contextual Document Segmentation / FAQs section).
+   * @returns {Promise<{ items: Array<{ faqId: string, question: string, answer: string }> }>}
+   */
+  async getFaqs() {
+    return apiFetch("/api/v1/analytics/faqs");
+  },
+
+  /**
+   * Validate FAQ answers: LLM rates how well each answer addresses the question (0-100).
+   * @param {{ items: Array<{ search_query_id: number, question: string, answer: string }> }} body
+   * @returns {Promise<{ results: Array<{ search_query_id: number, confidence: number }> }>}
+   */
+  async validateFaqAnswers(body) {
+    return apiFetch("/api/v1/analytics/knowledge-gaps/validate-answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  },
+
+  /**
+   * Save Review gaps answers to FAQs and remove those questions from search_queries.
+   * @param {{ items: Array<{ search_query_id: number, answer: string }> }} body
+   * @returns {Promise<{ saved: number, message: string }>}
+   */
+  async saveFaqAnswers(body) {
+    return apiFetch("/api/v1/analytics/knowledge-gaps/save-answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
   },
 };
 
@@ -456,14 +571,16 @@ export const search = {
    * @param {string} queryText - User question
    * @param {number} projectId - Project whose ChromaDB collection to search
    * @param {number} [k=10] - Top-k chunks to retrieve and pass to GPT
-   * @param {{ advanced_search?: boolean }} [opts] - advanced_search: enable Query Intelligence Layer
-   * @returns {{ query_text: string, project_id: number, k: number, results: Array<...>, answer: string, advanced_search_used?, cleaned_query?, clarification_needed?, clarification_questions? }}
+   * @param {{ advanced_search?: boolean, conversation_id?: string }} [opts] - advanced_search; conversation_id for chat grouping (same id for follow-up queries, valid 24h)
+   * @returns {{ query_text, project_id, k, results, answer, conversation_id?, ... }}
    */
   async answer(queryText, projectId, k = 10, opts = {}) {
-    const { advanced_search = false } = opts;
+    const { advanced_search = false, conversation_id } = opts;
+    const body = { query_text: queryText, project_id: projectId, k, advanced_search };
+    if (conversation_id) body.conversation_id = conversation_id;
     return apiFetch("/api/v1/search/answer", {
       method: "POST",
-      body: JSON.stringify({ query_text: queryText, project_id: projectId, k, advanced_search }),
+      body: JSON.stringify(body),
     });
   },
 
@@ -472,20 +589,22 @@ export const search = {
    * evidence bundling, reranking, answer synthesis, self-check.
    * @param {string} queryText - User question
    * @param {number} projectId - Project whose ChromaDB collection to search
-   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search (Query Intelligence Layer)
+   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search, conversation_id (chat grouping, valid 24h)
    */
   async reasoning(queryText, projectId, opts = {}) {
-    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false } = opts;
+    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false, conversation_id } = opts;
+    const body = {
+      query_text: queryText,
+      project_id: projectId,
+      k,
+      top_k,
+      skip_self_check,
+      advanced_search,
+    };
+    if (conversation_id) body.conversation_id = conversation_id;
     return apiFetch("/api/v1/search/reasoning", {
       method: "POST",
-      body: JSON.stringify({
-        query_text: queryText,
-        project_id: projectId,
-        k,
-        top_k,
-        skip_self_check,
-        advanced_search,
-      }),
+      body: JSON.stringify(body),
     });
   },
 
@@ -493,10 +612,10 @@ export const search = {
    * Streaming reasoning: same as reasoning but returns Server-Sent Events.
    * Calls onEvent({ type, data }) for each event (status, query_analysis, search_query, confidence, result, error).
    * Resolves with the full result when event type is "result"; rejects on "error" or HTTP error.
-   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search
+   * @param {object} [opts] - Optional: k, top_k, skip_self_check, advanced_search, conversation_id (chat grouping, valid 24h)
    */
   async reasoningStream(queryText, projectId, opts = {}, { onEvent } = {}) {
-    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false } = opts;
+    const { k = 20, top_k = 12, skip_self_check = false, advanced_search = false, conversation_id } = opts;
     const url = `${API_BASE}/api/v1/search/reasoning/stream`;
     const headers = {
       "Content-Type": "application/json",
@@ -504,19 +623,22 @@ export const search = {
     const token = getToken();
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
+    const body = {
+      query_text: queryText,
+      project_id: projectId,
+      k,
+      top_k,
+      skip_self_check,
+      advanced_search,
+    };
+    if (conversation_id) body.conversation_id = conversation_id;
+
     let res;
     try {
       res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          query_text: queryText,
-          project_id: projectId,
-          k,
-          top_k,
-          skip_self_check,
-          advanced_search,
-        }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       if (err?.name === "TypeError" && err?.message?.toLowerCase?.().includes("fetch")) {
@@ -655,11 +777,14 @@ export const searchQueries = {
    * @returns {Promise<Array<{ id: number, ts: string, project_id: string, query_text: string, answer: string|null, answer_status: string|null, topic: string|null, feedback_status: string|null, ... }>>}
    */
   async list(params = {}) {
-    const { projectId, skip = 0, limit = 100 } = params;
+    const { projectId, skip = 0, limit = 100, on_date: onDate, from_date: fromDate, to_date: toDate } = params;
     const q = new URLSearchParams();
     if (skip != null) q.set("skip", String(skip));
     if (limit != null) q.set("limit", String(limit));
     if (projectId) q.set("project_id", projectId);
+    if (onDate) q.set("on_date", onDate);
+    if (fromDate) q.set("from_date", fromDate);
+    if (toDate) q.set("to_date", toDate);
     const query = q.toString();
     return apiFetch(`/api/v1/search/queries${query ? `?${query}` : ""}`);
   },
@@ -671,19 +796,34 @@ export const searchQueries = {
   async get(id) {
     return apiFetch(`/api/v1/search/queries/${id}`);
   },
+
+  /**
+   * Get all Q&A messages for a conversation (same conversation_id), ordered by time.
+   * Use when user opens a conversation in the log to show full thread.
+   * @param {string} conversationId
+   * @returns {Promise<Array<{ id: number, ts: string, query_text: string, answer: string|null, ... }>>}
+   */
+  async getByConversationId(conversationId) {
+    return apiFetch(`/api/v1/search/queries/by-conversation/${encodeURIComponent(conversationId)}`);
+  },
 };
 
-// Activity logs — list and create
+// Activity logs — list and create (returns { items, total, total_last_7_days })
 export const activity = {
   async list(params = {}) {
-    const { actor, event_action, severity, system, skip = 0, limit = 100 } = params;
+    const { actor, event_action, severity, severity_in, system, q: searchQ, days, from_date, to_date, skip = 0, limit = 100 } = params;
     const q = new URLSearchParams();
     if (skip != null) q.set("skip", String(skip));
     if (limit != null) q.set("limit", String(limit));
     if (actor) q.set("actor", actor);
     if (event_action) q.set("event_action", event_action);
     if (severity) q.set("severity", severity);
+    if (severity_in) q.set("severity_in", severity_in);
     if (system) q.set("system", system);
+    if (searchQ) q.set("q", searchQ);
+    if (days != null) q.set("days", String(days));
+    if (from_date) q.set("from_date", from_date);
+    if (to_date) q.set("to_date", to_date);
     const query = q.toString();
     return apiFetch(`/api/v1/activity/logs${query ? `?${query}` : ""}`);
   },
@@ -703,16 +843,61 @@ export const activity = {
   },
 };
 
+// Access Intelligence — document access logs (view, download, upload)
+export const accessIntelligence = {
+  /**
+   * Log a document access event (view, download, or upload).
+   * @param {{ user_id?: string, username: string, document_name: string, document_id?: string, access_level: string, action: 'view'|'download'|'upload' }} body
+   */
+  async create(body) {
+    return apiFetch("/api/v1/access-intelligence/logs", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: body.user_id ?? null,
+        username: body.username,
+        document_name: body.document_name,
+        document_id: body.document_id ?? null,
+        access_level: body.access_level,
+        action: body.action,
+      }),
+    });
+  },
+
+  /**
+   * List document access logs with optional filters.
+   * @param {{ user_id?: string, username?: string, document_name?: string, document_id?: string, access_level?: string, action?: string, from_date?: string, to_date?: string, skip?: number, limit?: number }} [params]
+   * @returns {Promise<{ items: Array<{ id: number, user_id: string|null, username: string, date_time: string, document_name: string, document_id: string|null, access_level: string, action: string }>, total: number }>}
+   */
+  async list(params = {}) {
+    const { user_id, username, document_name, document_id, access_level, action, from_date, to_date, skip = 0, limit = 100 } = params;
+    const q = new URLSearchParams();
+    if (skip != null) q.set("skip", String(skip));
+    if (limit != null) q.set("limit", String(limit));
+    if (user_id) q.set("user_id", user_id);
+    if (username) q.set("username", username);
+    if (document_name) q.set("document_name", document_name);
+    if (document_id) q.set("document_id", document_id);
+    if (access_level) q.set("access_level", access_level);
+    if (action) q.set("action", action);
+    if (from_date) q.set("from_date", from_date);
+    if (to_date) q.set("to_date", to_date);
+    const query = q.toString();
+    return apiFetch(`/api/v1/access-intelligence/logs${query ? `?${query}` : ""}`);
+  },
+};
+
 // Endpoint logs — list and get by id
 export const endpointLogs = {
   async list(params = {}) {
-    const { method, path, status_code, skip = 0, limit = 100 } = params;
+    const { method, path, status_code, from_date, to_date, skip = 0, limit = 100 } = params;
     const q = new URLSearchParams();
     if (skip != null) q.set("skip", String(skip));
     if (limit != null) q.set("limit", String(limit));
     if (method) q.set("method", method);
     if (path) q.set("path", path);
     if (status_code != null) q.set("status_code", String(status_code));
+    if (from_date) q.set("from_date", from_date);
+    if (to_date) q.set("to_date", to_date);
     const query = q.toString();
     return apiFetch(`/api/v1/endpoint-logs${query ? `?${query}` : ""}`);
   },

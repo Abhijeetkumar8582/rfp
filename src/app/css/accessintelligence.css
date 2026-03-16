@@ -40,6 +40,71 @@
   margin-top: 12px;
 }
 
+/* Date range dropdown — production-ready trigger button */
+.aiDateRangeWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger,
+.aiDateRangeWrap .docSelect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: var(--shadow-sm);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger:hover,
+.aiDateRangeWrap .docSelect:hover {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand-hover);
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger:focus-visible,
+.aiDateRangeWrap .docSelect:focus-visible {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger:active,
+.aiDateRangeWrap .docSelect:active {
+  background: var(--soft);
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger[aria-expanded="true"],
+.aiDateRangeWrap .docSelect[aria-expanded="true"] {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand-hover);
+}
+
+.aiDateRangeWrap .docFilterDropdownCaret {
+  font-size: 10px;
+  opacity: 0.8;
+  transition: transform 0.2s ease;
+}
+
+.aiDateRangeWrap .docFilterDropdownTrigger[aria-expanded="true"] .docFilterDropdownCaret,
+.aiDateRangeWrap .docSelect[aria-expanded="true"] .docFilterDropdownCaret {
+  transform: rotate(180deg);
+}
+
 .aiRangeSelect {
   appearance: none;
   border: 1px solid var(--border);

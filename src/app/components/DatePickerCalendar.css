@@ -1,0 +1,350 @@
+/* Shared date range filter + calendar styles. Used by DateRangeFilterDropdown and MiniCalendar.
+ * Imported by DatePickerCalendar.js so any page using the component gets these styles. */
+
+/* Filter dropdown: trigger + panel (shared by date range dropdown) */
+.docFilterDropdownWrap {
+  position: relative;
+  display: inline-block;
+}
+
+.docFilterDropdownTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 100px;
+  text-align: left;
+}
+
+.docFilterDropdownCaret {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.docFilterDropdownPanel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm), 0 8px 24px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+/* Date filter panel + quick options + two calendars */
+.docDateFilterPanel {
+  padding: 12px;
+}
+
+.docDateFilterPanelWithCalendar {
+  min-width: auto;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  max-height: min(85vh, 640px);
+}
+
+.docDateFilterPanelWithCalendar .docDateFilterLayout {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.docDateFilterPanelWithCalendar .docDateFilterLayout::-webkit-scrollbar {
+  display: none;
+}
+
+.docDateFilterPanelWithCalendar .docDateFilterApplyWrap {
+  flex-shrink: 0;
+}
+
+.docDateFilterLayout {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.docDateFilterButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 140px;
+}
+
+.docDateFilterBtn {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+  font-family: var(--font-family);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.docDateFilterBtn:hover {
+  background: var(--soft);
+  border-color: var(--brand-border);
+}
+
+.docDateFilterBtnActive {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 500;
+}
+
+.docDateCalendarWrap {
+  flex-shrink: 0;
+}
+
+.docDateCalendarsRow {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.docDateSingleCalendar {
+  flex-shrink: 0;
+}
+
+.docDateCalendarSubLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.docDateFilterApplyWrap {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.docDateFilterApplyBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.docDateFilterApplyBtn:hover {
+  filter: brightness(1.08);
+}
+
+/* Single calendar: header, nav, table, month/year grids */
+.docDateCalendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.docDateCalendarMonthLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.docDateCalendarNav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--soft);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.docDateCalendarNav:hover {
+  background: var(--border);
+}
+
+.docDateCalendarTable {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.docDateCalendarWeekday {
+  padding: 4px 6px;
+  text-align: center;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.docDateCalendarCell {
+  padding: 2px;
+}
+
+.docDateCalendarDay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.docDateCalendarDay:hover {
+  background: var(--soft);
+}
+
+.docDateCalendarDayOther {
+  color: var(--muted);
+}
+
+.docDateCalendarDaySelected {
+  background: var(--brand);
+  color: #fff;
+}
+
+.docDateCalendarDaySelected:hover {
+  background: var(--brand);
+  filter: brightness(1.1);
+}
+
+.docDateCalendarDayInRange {
+  background: var(--soft);
+  border-radius: 0;
+}
+
+.docDateCalendarDayInRange:hover {
+  background: var(--border);
+}
+
+.docDateCalendarDayRangeStart {
+  background: var(--brand);
+  color: #fff;
+  border-radius: 6px;
+}
+
+.docDateCalendarDayRangeStart:hover {
+  background: var(--brand);
+  filter: brightness(1.1);
+}
+
+.docDateCalendarDayRangeEnd {
+  background: var(--brand);
+  color: #fff;
+  border-radius: 6px;
+}
+
+.docDateCalendarDayRangeEnd:hover {
+  background: var(--brand);
+  filter: brightness(1.1);
+}
+
+.docDateCalendarDayRangeStart.docDateCalendarDayRangeEnd {
+  border-radius: 6px;
+}
+
+.docDateCalendarClickable {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.docDateCalendarHeaderMonth,
+.docDateCalendarHeaderYear,
+.docDateCalendarHeaderYearOnly {
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.docDateCalendarHeaderMonth:hover,
+.docDateCalendarHeaderYear:hover,
+.docDateCalendarHeaderYearOnly:hover {
+  background: var(--soft);
+  color: var(--brand);
+}
+
+.docDateMonthGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.docDateMonthGridItem {
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.docDateMonthGridItem:hover {
+  background: var(--soft);
+  border-color: var(--brand-border);
+}
+
+.docDateYearGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.docDateYearGridItem {
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.docDateYearGridItem:hover {
+  background: var(--soft);
+  border-color: var(--brand-border);
+}

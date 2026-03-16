@@ -1,10 +1,30 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
-import { projects as projectsApi, documents as documentsApi, activity as activityApi, API_BASE, getToken } from "../../lib/api";
+import { projects as projectsApi, documents as documentsApi, activity as activityApi, dashboard as dashboardApi, accessIntelligence as accessIntelligenceApi, API_BASE, getToken } from "../../lib/api";
 import "../css/filerepository.css";
+
+/** True if current user can add files and train data (Super Admin or Admin). */
+function canManageFiles(user) {
+  const role = (user?.role || "").toLowerCase();
+  return role === "admin" || role === "manager";
+}
+
+/** True if current user can see row actions (3-dots menu) and open file detail (chunks/meta). Admin, Super Admin, and Developer can; Viewer cannot. */
+function canSeeRowActions(user) {
+  const role = (user?.role || "").toLowerCase();
+  return role === "admin" || role === "manager" || role === "analyst" || role === "developer";
+}
+
+/** True if current user is Developer (analyst). They get only Open/Download in kebab; Download only for Open for all. */
+function isDeveloperRole(user) {
+  const role = (user?.role || "").toLowerCase();
+  return role === "analyst" || role === "developer";
+}
 
 function logPageView(activityApi, user, resource) {
   activityApi.create({
@@ -16,8 +36,8 @@ function logPageView(activityApi, user, resource) {
   }).catch(() => {});
 }
 
-// Semantic clusters — documents are auto-assigned to these by meaning (vector similarity)
-const CLUSTERS = ["All", "Security", "Finance", "Architecture", "Compliance", "Integrations"];
+// Semantic clusters — documents are auto-assigned to these by meaning (vector similarity). FAQs and Uncategorized are special sections.
+const CLUSTERS = ["All", "Security", "Finance", "Architecture", "Compliance", "Integrations", "FAQs", "Uncategorized"];
 
 // Document access levels: controls whether URL is shown, and open/download allowed
 export const ACCESS_LEVELS = {
@@ -52,11 +72,14 @@ function docToFile(doc) {
   };
 }
 
-function KebabMenu({ file, onAction }) {
+function KebabMenu({ file, user, onAction }) {
   const [open, setOpen] = useState(false);
   const level = file?.accessLevel || "open_for_all";
+  const developer = isDeveloperRole(user);
   const canOpen = level !== "high_security";
-  const canDownload = level !== "high_security";
+  const canDownload = developer
+    ? level === "open_for_all"
+    : level !== "high_security";
 
   return (
     <div className="frKebabWrap">
@@ -72,10 +95,14 @@ function KebabMenu({ file, onAction }) {
         <div className="frMenu" onMouseLeave={() => setOpen(false)}>
           {canOpen && <button onClick={() => onAction("open")}>Open</button>}
           {canDownload && <button onClick={() => onAction("download")}>Download</button>}
-          <button onClick={() => onAction("edit")}>Edit metadata</button>
-          <button className="danger" onClick={() => onAction("delete")}>
-            Delete
-          </button>
+          {!developer && (
+            <>
+              <button onClick={() => onAction("edit")}>Edit metadata</button>
+              <button className="danger" onClick={() => onAction("delete")}>
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -458,7 +485,7 @@ function TrainDatasourceModal({ onClose, projectId, projectName, documentCount, 
                   onChange={(e) => setIncludeMetadata(e.target.checked)}
                   className="frTrainCheckbox"
                 />
-                <span>Include GPT-generated metadata (title, tags, taxonomy) in retrieval</span>
+                <span>Include AI-generated metadata (title, tags, taxonomy) in retrieval</span>
               </label>
             </div>
 
@@ -485,9 +512,9 @@ function TrainDatasourceModal({ onClose, projectId, projectName, documentCount, 
   );
 }
 
-function AddFileModal({ onClose, onUpload, uploading, progress }) {
+/* Step 1: file selection only — no visibility */
+function AddFileModalStep1({ onClose, onNext }) {
   const fileInputRef = useRef(null);
-  const [visibility, setVisibility] = useState("open_for_all");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [extractPdfImages, setExtractPdfImages] = useState(true);
 
@@ -512,16 +539,14 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
     e.stopPropagation();
   }
 
-  function handleUpload() {
+  function handleSave() {
     if (selectedFiles.length === 0) return;
-    onUpload(selectedFiles, visibility, extractPdfImages);
+    onNext(selectedFiles, extractPdfImages);
   }
 
   function handleClose() {
-    if (!uploading) {
-      setSelectedFiles([]);
-      onClose();
-    }
+    setSelectedFiles([]);
+    onClose();
   }
 
   return (
@@ -529,26 +554,11 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
       <div className="frAddFilePanel">
         <div className="frFileDetailHeader">
           <h2 className="frFileDetailTitle">Add new file</h2>
-          <button type="button" className="frFileDetailClose" onClick={handleClose} aria-label="Close" disabled={uploading}>✕</button>
+          <button type="button" className="frFileDetailClose" onClick={handleClose} aria-label="Close">✕</button>
         </div>
 
         <div className="frAddFileBody">
-          <div className="frUploadVisibility">
-            <label className="frSmallLabel" htmlFor="addFileVisibility">Document visibility</label>
-            <p className="frHint">Choose who can open/download and whether the document URL is shown in search answers.</p>
-            <select
-              id="addFileVisibility"
-              className="frVisibilitySelect"
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value)}
-            >
-              {Object.values(ACCESS_LEVELS).map((opt) => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="frTrainField frTrainCheckboxWrap" style={{ marginTop: 16 }}>
+          <div className="frTrainField frTrainCheckboxWrap" style={{ marginBottom: 16 }}>
             <label className="frTrainCheckboxLabel">
               <input
                 type="checkbox"
@@ -583,23 +593,14 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
               style={{ display: "none" }}
             />
           </div>
-
-          {uploading && (
-            <div className="frAddFileProgress">
-              <div className="frStatusTitle">Uploading… {progress}%</div>
-              <div className="frBar">
-                <div className="frBarFill" style={{ width: `${progress}%` }} />
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="frAddFileFooter">
-          <button type="button" className="frAddFileCancel" onClick={handleClose} disabled={uploading}>
+          <button type="button" className="frAddFileCancel" onClick={handleClose}>
             Cancel
           </button>
-          <button type="button" className="frPrimaryBtn" onClick={handleUpload} disabled={selectedFiles.length === 0 || uploading}>
-            <span className="frPlus">＋</span> Upload
+          <button type="button" className="frPrimaryBtn" onClick={handleSave} disabled={selectedFiles.length === 0}>
+            Save
           </button>
         </div>
       </div>
@@ -608,10 +609,121 @@ function AddFileModal({ onClose, onUpload, uploading, progress }) {
   );
 }
 
+const CHUNK_SIZE_MIN = 50;
+const CHUNK_SIZE_MAX = 500;
+const CHUNK_SIZE_STEP = 50;
+
+/* Step 2: visibility + chunks number — Save and Close closes modal and starts upload/chunking */
+function AddFileModalStep2({ onClose, onConfirm }) {
+  const [visibility, setVisibility] = useState("open_for_all");
+  const [chunkSize, setChunkSize] = useState(DEFAULT_CHUNK_SIZE);
+  const [chunkError, setChunkError] = useState(null);
+  const [touched, setTouched] = useState(false);
+
+  function validateChunkSize(val) {
+    const n = Number(val);
+    if (Number.isNaN(n) || n < CHUNK_SIZE_MIN || n > CHUNK_SIZE_MAX) {
+      return `Enter a value between ${CHUNK_SIZE_MIN} and ${CHUNK_SIZE_MAX}`;
+    }
+    return null;
+  }
+
+  function handleChunkChange(e) {
+    const val = e.target.value;
+    setChunkSize(val === "" ? "" : Number(val) || DEFAULT_CHUNK_SIZE);
+    if (touched) setChunkError(validateChunkSize(val === "" ? 0 : Number(val)));
+    else setChunkError(null);
+  }
+
+  function handleChunkBlur() {
+    setTouched(true);
+    setChunkError(validateChunkSize(chunkSize));
+  }
+
+  function handleSaveAndClose() {
+    const err = validateChunkSize(chunkSize);
+    setChunkError(err);
+    setTouched(true);
+    if (err) return;
+    const size = Math.min(CHUNK_SIZE_MAX, Math.max(CHUNK_SIZE_MIN, Number(chunkSize)));
+    onConfirm(visibility, size);
+  }
+
+  const chunkInvalid = chunkError != null;
+  const displayChunk = chunkSize === "" ? "" : chunkSize;
+
+  return (
+    <div className="frFileDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="frDocSettingsTitle" aria-describedby="frDocSettingsDesc">
+      <div className="frAddFilePanel frDocumentSettingsPanel">
+        <div className="frFileDetailHeader frDocSettingsHeader">
+          <div>
+            <h2 id="frDocSettingsTitle" className="frFileDetailTitle">Document settings</h2>
+            <p id="frDocSettingsDesc" className="frDocSettingsSubtitle">Configure visibility and processing before upload.</p>
+          </div>
+          <button type="button" className="frFileDetailClose" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <div className="frAddFileBody frDocSettingsBody">
+          <section className="frDocSettingsSection" aria-labelledby="frDocVisibilityLabel">
+            <label id="frDocVisibilityLabel" className="frDocSettingsLabel" htmlFor="addFileVisibility">Document visibility</label>
+            <p className="frDocSettingsHint">Choose who can open or download this document and whether its URL is shown in search answers.</p>
+            <select
+              id="addFileVisibility"
+              className="frDocSettingsSelect"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
+              aria-describedby="addFileVisibilityHint"
+            >
+              {Object.values(ACCESS_LEVELS).map((opt) => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <span id="addFileVisibilityHint" className="frDocSettingsFieldHint">{ACCESS_LEVELS[visibility]?.desc}</span>
+          </section>
+
+          <section className="frDocSettingsSection" aria-labelledby="frDocChunkLabel" aria-invalid={chunkInvalid} aria-errormessage={chunkInvalid ? "frChunkSizeError" : undefined}>
+            <label id="frDocChunkLabel" className="frDocSettingsLabel" htmlFor="addFileChunkSize">Words per chunk</label>
+            <p className="frDocSettingsHint">Chunk size used when processing the document. Recommended: 150–250.</p>
+            <input
+              id="addFileChunkSize"
+              type="number"
+              min={CHUNK_SIZE_MIN}
+              max={CHUNK_SIZE_MAX}
+              step={CHUNK_SIZE_STEP}
+              className={`frDocSettingsInput ${chunkInvalid ? "frDocSettingsInputInvalid" : ""}`}
+              value={displayChunk}
+              onChange={handleChunkChange}
+              onBlur={handleChunkBlur}
+              aria-invalid={chunkInvalid}
+              aria-errormessage="frChunkSizeError"
+              aria-describedby="frChunkSizeError"
+            />
+            {chunkError && (
+              <p id="frChunkSizeError" className="frDocSettingsError" role="alert">{chunkError}</p>
+            )}
+          </section>
+        </div>
+
+        <div className="frAddFileFooter frDocSettingsFooter">
+          <button type="button" className="frAddFileCancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="frPrimaryBtn frDocSettingsPrimaryBtn" onClick={handleSaveAndClose}>
+            Save and Close
+          </button>
+        </div>
+      </div>
+      <div className="frFileDetailBackdrop" onClick={onClose} aria-hidden="true" />
+    </div>
+  );
+}
+
 export default function FileRepository() {
   const fileInputRef = useRef(null);
   const { user } = useAuth();
+  const canManage = canManageFiles(user);
   const [showAddFileModal, setShowAddFileModal] = useState(false);
+  const [addFileStep2, setAddFileStep2] = useState(null);
   const [showTrainDatasourceModal, setShowTrainDatasourceModal] = useState(false);
 
   const [tab, setTab] = useState("All");
@@ -619,10 +731,7 @@ export default function FileRepository() {
   const [folderSearch, setFolderSearch] = useState("");
   const [page, setPage] = useState(1);
 
-  const [projects, setProjects] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
@@ -631,51 +740,56 @@ export default function FileRepository() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [editFile, setEditFile] = useState(null);
   const [uploadAccessLevel, setUploadAccessLevel] = useState("open_for_all");
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
 
+  const queryClient = useQueryClient();
   const pageSize = 5;
+
+  const {
+    data: projects = [],
+    isLoading: projectsLoading,
+    error: projectsError,
+  } = useQuery({
+    queryKey: ["filerepo", "projects"],
+    queryFn: () => projectsApi.list(),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (projects.length > 0 && selectedProjectId == null) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
+
+  const {
+    data: documents = [],
+    isLoading: documentsLoading,
+    error: documentsError,
+    refetch: refetchDocuments,
+  } = useQuery({
+    queryKey: ["filerepo", "documents", selectedProjectId],
+    queryFn: () => projectsApi.listDocuments(selectedProjectId, 0, 500),
+    enabled: selectedProjectId != null,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const {
+    data: faqsData,
+    isLoading: faqsLoading,
+    error: faqsError,
+  } = useQuery({
+    queryKey: ["filerepo", "faqs"],
+    queryFn: () => dashboardApi.getFaqs(),
+    enabled: tab === "FAQs",
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const faqItems = faqsData?.items ?? [];
+  const loading = projectsLoading || (selectedProjectId != null && documentsLoading && tab !== "FAQs") || (tab === "FAQs" && faqsLoading);
+  const error = projectsError?.message ?? documentsError?.message ?? (tab === "FAQs" ? faqsError?.message : null) ?? null;
 
   useEffect(() => {
     logPageView(activityApi, user, "File Repository");
   }, [user?.name, user?.email]);
-
-  const fetchProjects = useCallback(async () => {
-    try {
-      const list = await projectsApi.list();
-      setProjects(list);
-      if (list.length > 0) {
-        setSelectedProjectId((prev) => prev ?? list[0].id);
-      }
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
-
-  const fetchDocuments = useCallback(async () => {
-    if (selectedProjectId == null) {
-      setDocuments([]);
-      return;
-    }
-    try {
-      const list = await projectsApi.listDocuments(selectedProjectId, 0, 500);
-      setDocuments(list ?? []);
-      setError(null);
-    } catch (e) {
-      setDocuments([]);
-      setError(e.message);
-    }
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchProjects().finally(() => setLoading(false));
-  }, [fetchProjects]);
-
-  useEffect(() => {
-    if (!loading && selectedProjectId != null) {
-      fetchDocuments();
-    }
-  }, [loading, selectedProjectId, fetchDocuments]);
 
   const allFiles = useMemo(() => documents.map(docToFile), [documents]);
 
@@ -699,6 +813,15 @@ export default function FileRepository() {
     const start = (safePage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, safePage]);
+
+  // FAQs section: paginate FAQ list (All section does not show FAQs — documents only)
+  const faqTotal = faqItems.length;
+  const faqTotalPages = Math.max(1, Math.ceil(faqTotal / pageSize));
+  const faqSafePage = Math.min(page, faqTotalPages);
+  const faqPageItems = useMemo(() => {
+    const start = (faqSafePage - 1) * pageSize;
+    return faqItems.slice(start, start + pageSize);
+  }, [faqItems, faqSafePage]);
 
   function onBrowseClick() {
     fileInputRef.current?.click();
@@ -742,7 +865,7 @@ export default function FileRepository() {
           /* non-blocking; metadata may be generated in background by backend */
         }
       }
-      fetchDocuments();
+      queryClient.invalidateQueries({ queryKey: ["filerepo", "documents", projId] });
       for (let i = 0; i < files.length; i++) {
         try {
           await activityApi.create({
@@ -751,6 +874,15 @@ export default function FileRepository() {
             target_resource: files[i]?.name ? String(files[i].name) : "Document",
             severity: "info",
             system: "web",
+          });
+          const docId = docIds[i];
+          await accessIntelligenceApi.create({
+            user_id: user?.id ?? null,
+            username: user?.name || user?.email || "User",
+            document_name: files[i]?.name ? String(files[i].name) : "Document",
+            document_id: docId ? String(docId) : null,
+            access_level: level,
+            action: "upload",
           });
         } catch {
           /* non-blocking */
@@ -785,43 +917,61 @@ export default function FileRepository() {
     e.stopPropagation();
   }
 
+  const modalTarget = typeof document !== "undefined" ? document.body : null;
+
   return (
     <AppShell mainClassName="main">
     <div className="frPage">
-      {selectedFile && (
-        <FileDetailView file={selectedFile} onClose={() => setSelectedFile(null)} />
+      {modalTarget && selectedFile && createPortal(
+        <FileDetailView file={selectedFile} onClose={() => setSelectedFile(null)} />,
+        modalTarget
       )}
-      {editFile && (
+      {modalTarget && editFile && createPortal(
         <EditDocumentModal
           file={editFile}
           onSave={async (body) => {
             await documentsApi.update(editFile.documentId, body);
-            fetchDocuments();
+            queryClient.invalidateQueries({ queryKey: ["filerepo", "documents", selectedProjectId] });
           }}
           onClose={() => setEditFile(null)}
-        />
+        />,
+        modalTarget
       )}
       {error && (
         <div className="frError" role="alert" style={{ padding: 12, background: "#fee", color: "#c00", marginBottom: 16, borderRadius: 8 }}>
           {error}
         </div>
       )}
-      {showAddFileModal && (
-        <AddFileModal
+      {modalTarget && showAddFileModal && createPortal(
+        <AddFileModalStep1
           onClose={() => setShowAddFileModal(false)}
-          onUpload={(files, accessLevel, extractPdfImages) => processUpload(files, accessLevel, () => setShowAddFileModal(false), extractPdfImages)}
-          uploading={uploading}
-          progress={progress}
-        />
+          onNext={(files, extractPdfImages) => {
+            setShowAddFileModal(false);
+            setAddFileStep2({ files, extractPdfImages });
+          }}
+        />,
+        modalTarget
       )}
-      {showTrainDatasourceModal && (
+      {modalTarget && addFileStep2 && createPortal(
+        <AddFileModalStep2
+          onClose={() => setAddFileStep2(null)}
+          onConfirm={(visibility) => {
+            const { files, extractPdfImages } = addFileStep2;
+            setAddFileStep2(null);
+            processUpload(files, visibility, () => {}, extractPdfImages);
+          }}
+        />,
+        modalTarget
+      )}
+      {modalTarget && showTrainDatasourceModal && createPortal(
         <TrainDatasourceModal
           onClose={() => setShowTrainDatasourceModal(false)}
           projectId={selectedProjectId}
           projectName={projects.find((p) => p.id === selectedProjectId)?.name}
           documentCount={documents.length}
           projectsApi={projectsApi}
-        />
+        />,
+        modalTarget
       )}
 
       {/* Header */}
@@ -832,12 +982,16 @@ export default function FileRepository() {
             <p className="frSubtitle">Documents grouped by contextual meaning and topic similarity</p>
           </div>
           <div className="frHeaderActions">
-            <button type="button" className="frTrainDatasourceBtn" onClick={() => setShowTrainDatasourceModal(true)}>
-              Train Data
-            </button>
-            <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
-              <span className="frPlus">＋</span> Add new file
-            </button>
+            {canManage && (
+              <>
+                <button type="button" className="frTrainDatasourceBtn" onClick={() => setShowTrainDatasourceModal(true)}>
+                  Train Data
+                </button>
+                <button type="button" className="frAddNewFileBtn" onClick={() => setShowAddFileModal(true)}>
+                  <span className="frPlus">＋</span> Add new file
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -859,46 +1013,88 @@ export default function FileRepository() {
 
       {/* Table */}
       <div className="frTableCard">
-        <table className="frTable">
+        <table className={`frTable ${tab === "FAQs" ? "frTable--faqs" : ""}`}>
           <thead>
             <tr>
-              <th className="wFolder">
-                <span className="thIcon">🏷️</span> CLUSTER
-              </th>
-              <th>
-                <span className="thIcon">✎</span> NAME
-              </th>
-              <th className="wCreated">
-                <span className="thIcon">📅</span> CREATED{" "}
-                <span className="sortIcon">▴▾</span>
-              </th>
-              <th className="wModified">
-                <span className="thIcon">✎</span> LAST MODIFIED
-              </th>
-              <th className="wAccess">
-                <span className="thIcon">🔒</span> ACCESS
-              </th>
-              <th className="wMenu"></th>
+              {tab === "FAQs" ? (
+                <>
+                  <th><span className="thIcon">❓</span> QUESTION</th>
+                  <th><span className="thIcon">💬</span> ANSWER</th>
+                </>
+              ) : (
+                <>
+                  <th className="wFolder">
+                    <span className="thIcon">🏷️</span> CLUSTER
+                  </th>
+                  <th>
+                    <span className="thIcon">✎</span> NAME
+                  </th>
+                  <th className="wCreated">
+                    <span className="thIcon">📅</span> CREATED{" "}
+                    <span className="sortIcon">▴▾</span>
+                  </th>
+                  <th className="wModified">
+                    <span className="thIcon">✎</span> LAST MODIFIED
+                  </th>
+                  <th className="wAccess">
+                    <span className="thIcon">🔒</span> ACCESS
+                  </th>
+                  {canSeeRowActions(user) && <th className="wMenu"></th>}
+                </>
+              )}
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ padding: 24, textAlign: "center" }}>Loading documents…</td></tr>
+              <tr>
+                <td colSpan={tab === "FAQs" ? 2 : (canSeeRowActions(user) ? 6 : 5)} style={{ padding: 24, textAlign: "center" }}>
+                  {tab === "FAQs" ? "Loading FAQs…" : "Loading documents…"}
+                </td>
+              </tr>
+            ) : tab === "FAQs" ? (
+              faqPageItems.length === 0 ? (
+                <tr>
+                  <td colSpan={2} style={{ padding: 24, textAlign: "center", color: "#666" }}>
+                    No FAQs yet. Add answers from Intelligence Hub → Review gaps.
+                  </td>
+                </tr>
+              ) : (
+                faqPageItems.map((faq) => (
+                  <tr key={faq.faqId}>
+                    <td className="frFaqQuestion"><div className="frFaqCellInner">{faq.question}</div></td>
+                    <td className="frFaqAnswer"><div className="frFaqCellInner">{faq.answer}</div></td>
+                  </tr>
+                ))
+              )
             ) : pageItems.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: 24, textAlign: "center", color: "#666" }}>No documents yet. Upload a file below.</td></tr>
+              <tr><td colSpan={canSeeRowActions(user) ? 6 : 5} style={{ padding: 24, textAlign: "center", color: "#666" }}>No documents yet. Upload a file below.</td></tr>
             ) : (
             pageItems.map((r) => (
               <tr key={r.id}>
                 <td className="cellMuted"><span className="frClusterTag">{r.cluster}</span></td>
                 <td>
-                  <button
-                    type="button"
-                    className="frFileNameBtn"
-                    onClick={() => setSelectedFile(r)}
-                  >
-                    {r.name}
-                  </button>
+                  {canSeeRowActions(user) ? (
+                    <button
+                      type="button"
+                      className="frFileNameBtn"
+                      onClick={() => {
+                        setSelectedFile(r);
+                        accessIntelligenceApi.create({
+                          user_id: user?.id ?? null,
+                          username: user?.name || user?.email || "User",
+                          document_name: r.name || String(r.id),
+                          document_id: r.documentId ? String(r.documentId) : null,
+                          access_level: r.accessLevel || "open_for_all",
+                          action: "view",
+                        }).catch(() => {});
+                      }}
+                    >
+                      {r.name}
+                    </button>
+                  ) : (
+                    <span className="frFileNameBtn frFileNameBtn--readOnly">{r.name}</span>
+                  )}
                 </td>
                 <td className="cellMuted">{r.created}</td>
                 <td className="cellMuted">{r.modified}</td>
@@ -907,9 +1103,11 @@ export default function FileRepository() {
                     {ACCESS_LEVELS[r.accessLevel || "open_for_all"]?.label || "Open for all"}
                   </span>
                 </td>
+                {canSeeRowActions(user) && (
                 <td className="cellMenu">
                   <KebabMenu
                   file={r}
+                  user={user}
                   onAction={async (action) => {
                     if (action === "open") {
                       setSelectedFile(r);
@@ -920,6 +1118,14 @@ export default function FileRepository() {
                           target_resource: r.name || String(r.id),
                           severity: "info",
                           system: "web",
+                        });
+                        await accessIntelligenceApi.create({
+                          user_id: user?.id ?? null,
+                          username: user?.name || user?.email || "User",
+                          document_name: r.name || String(r.id),
+                          document_id: r.documentId ? String(r.documentId) : null,
+                          access_level: r.accessLevel || "open_for_all",
+                          action: "view",
                         });
                       } catch {
                         /* non-blocking */
@@ -936,6 +1142,18 @@ export default function FileRepository() {
                           a.download = r.name || "download";
                           a.click();
                           URL.revokeObjectURL(a.href);
+                          try {
+                            await accessIntelligenceApi.create({
+                              user_id: user?.id ?? null,
+                              username: user?.name || user?.email || "User",
+                              document_name: r.name || String(r.id),
+                              document_id: r.documentId ? String(r.documentId) : null,
+                              access_level: r.accessLevel || "open_for_all",
+                              action: "download",
+                            });
+                          } catch {
+                            /* non-blocking */
+                          }
                         }
                       } catch {
                         /* ignore */
@@ -947,7 +1165,7 @@ export default function FileRepository() {
                       try {
                         await documentsApi.delete(r.documentId);
                         setError(null);
-                        fetchDocuments();
+                        queryClient.invalidateQueries({ queryKey: ["filerepo", "documents", selectedProjectId] });
                         if (selectedFile?.documentId === r.documentId) setSelectedFile(null);
                       } catch (e) {
                         setError(e.message || "Delete failed");
@@ -956,6 +1174,7 @@ export default function FileRepository() {
                   }}
                 />
                 </td>
+                )}
               </tr>
             ))
             )}
@@ -964,23 +1183,24 @@ export default function FileRepository() {
 
         <div className="frTableFooter">
           <div className="frCount">
-            {(safePage - 1) * pageSize + 1}-{Math.min(safePage * pageSize, total)}{" "}
-            of {total}
+            {tab === "FAQs"
+              ? `${(faqSafePage - 1) * pageSize + 1}-${Math.min(faqSafePage * pageSize, faqTotal)} of ${faqTotal}`
+              : `${(safePage - 1) * pageSize + 1}-${Math.min(safePage * pageSize, total)} of ${total}`}
           </div>
 
           <div className="frPager">
             <button
               className="frPagerBtn"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage === 1}
+              disabled={tab === "FAQs" ? faqSafePage === 1 : safePage === 1}
               aria-label="prev"
             >
               ‹
             </button>
             <button
               className="frPagerBtn"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
+              onClick={() => setPage((p) => Math.min(tab === "FAQs" ? faqTotalPages : totalPages, p + 1))}
+              disabled={tab === "FAQs" ? faqSafePage === faqTotalPages : safePage === totalPages}
               aria-label="next"
             >
               ›

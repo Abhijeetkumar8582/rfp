@@ -1,26 +1,82 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { DateRangeFilterDropdown, toDateString } from "../components/DatePickerCalendar";
+import { accessIntelligence } from "../../lib/api";
 import "../css/accessintelligence.css";
 
-// Seed data: who accessed which document (in production from API)
-const seedAccessLog = [
-  { id: 1, user: "John Doe", document: "sso_security_policy.pdf", action: "Viewed", time: "12:45 PM", date: "Today", level: "high_security" },
-  { id: 2, user: "Sarah Malik", document: "gdpr_compliance_checklist.xlsx", action: "Viewed", time: "11:22 AM", date: "Today", level: "high_security" },
-  { id: 3, user: "John Doe", document: "companies_demo_export_xlsx", action: "Downloaded", time: "10:08 AM", date: "Today", level: "open_for_all" },
-  { id: 4, user: "Wirdan Athok", document: "api_integration_spec.xlsx", action: "Viewed", time: "09:33 AM", date: "Today", level: "open_for_all" },
-  { id: 5, user: "Tea Assiddiq", document: "sso_security_policy.pdf", action: "Viewed", time: "04:15 PM", date: "Yesterday", level: "high_security" },
-  { id: 6, user: "Sarah Malik", document: "system_architecture_diagram.pdf", action: "Downloaded", time: "02:50 PM", date: "Yesterday", level: "team_specific" },
-];
+function formatDateTime(dateTimeStr) {
+  if (!dateTimeStr) return "—";
+  const d = new Date(dateTimeStr);
+  const now = new Date();
+  const today = toDateString(now);
+  const dateStr = toDateString(d);
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  if (dateStr === today) return `${time} · Today`;
+  const yesterday = toDateString(new Date(now.getTime() - 86400000));
+  if (dateStr === yesterday) return `${time} · Yesterday`;
+  return `${time} · ${d.toLocaleDateString()}`;
+}
 
-// Sensitive document access frequency (high_security docs)
-const seedSensitiveFrequency = [
-  { document: "sso_security_policy.pdf", accessCount: 47, level: "high_security" },
-  { document: "gdpr_compliance_checklist.xlsx", accessCount: 32, level: "high_security" },
-];
+function accessLevelLabel(level) {
+  if (level === "high_security") return "High security";
+  if (level === "team_specific") return "Team";
+  return "Open for all";
+}
+
+function actionLabel(action) {
+  if (action === "view") return "Viewed";
+  if (action === "download") return "Downloaded";
+  if (action === "upload") return "Uploaded";
+  return action;
+}
 
 export default function AccessIntelligence() {
-  const [range, setRange] = useState("Last 30 days");
+  const [dateRangeFilter, setDateRangeFilter] = useState(null);
+  const [customDateStart, setCustomDateStart] = useState(null);
+  const [customDateEnd, setCustomDateEnd] = useState(null);
+  const [openDateDropdown, setOpenDateDropdown] = useState(false);
+
+  const todayStr = useMemo(() => toDateString(new Date()), []);
+
+  const { from_date, to_date } = useMemo(() => {
+    const today = todayStr;
+    if (dateRangeFilter === "today") return { from_date: today, to_date: today };
+    if (dateRangeFilter === "last7") {
+      const from = new Date();
+      from.setDate(from.getDate() - 6);
+      return { from_date: toDateString(from), to_date: today };
+    }
+    if (dateRangeFilter === "last30") {
+      const from = new Date();
+      from.setDate(from.getDate() - 29);
+      return { from_date: toDateString(from), to_date: today };
+    }
+    if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+      return { from_date: customDateStart, to_date: customDateEnd };
+    }
+    return { from_date: undefined, to_date: undefined };
+  }, [dateRangeFilter, customDateStart, customDateEnd, todayStr]);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["access-intelligence", "logs", from_date, to_date],
+    queryFn: () => accessIntelligence.list({ from_date, to_date, limit: 500 }),
+    staleTime: 60 * 1000,
+  });
+
+  const items = data?.items ?? [];
+  const sensitiveFrequency = useMemo(() => {
+    const highSecurity = items.filter((row) => row.access_level === "high_security");
+    const byDoc = {};
+    for (const row of highSecurity) {
+      const name = row.document_name || "Unknown";
+      byDoc[name] = (byDoc[name] || 0) + 1;
+    }
+    return Object.entries(byDoc)
+      .map(([document, accessCount]) => ({ document, accessCount, level: "high_security" }))
+      .sort((a, b) => b.accessCount - a.accessCount);
+  }, [items]);
 
   return (
     <div className="aiPage">
@@ -30,12 +86,21 @@ export default function AccessIntelligence() {
           Who accessed which document, sensitive document access frequency, and suspicious activity alerts. Strong compliance positioning.
         </p>
         <div className="aiRangeWrap">
-          <select value={range} onChange={(e) => setRange(e.target.value)} className="aiRangeSelect">
-            <option>Last 7 days</option>
-            <option>Last 14 days</option>
-            <option>Last 30 days</option>
-            <option>Last 90 days</option>
-          </select>
+          <DateRangeFilterDropdown
+            dateRangeFilter={dateRangeFilter}
+            onDateRangeFilterChange={setDateRangeFilter}
+            customDateStart={customDateStart}
+            customDateEnd={customDateEnd}
+            onCustomRangeChange={(start, end) => {
+              setCustomDateStart(start);
+              setCustomDateEnd(end);
+            }}
+            open={openDateDropdown}
+            onOpenChange={setOpenDateDropdown}
+            triggerLabel="Date range"
+            applyLabel="Apply range"
+            wrapClassName="aiDateRangeWrap"
+          />
         </div>
       </header>
 
@@ -53,19 +118,39 @@ export default function AccessIntelligence() {
               </tr>
             </thead>
             <tbody>
-              {seedAccessLog.map((row) => (
-                <tr key={row.id}>
-                  <td><span className="aiUser">{row.user}</span></td>
-                  <td>{row.document}</td>
-                  <td>
-                    <span className={`aiAccessBadge aiAccessBadge-${row.level || "open_for_all"}`}>
-                      {row.level === "high_security" ? "High security" : row.level === "team_specific" ? "Team" : "Open for all"}
-                    </span>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="aiMuted" style={{ padding: 24, textAlign: "center" }}>
+                    Loading…
                   </td>
-                  <td>{row.action}</td>
-                  <td className="aiMuted">{row.time} · {row.date}</td>
                 </tr>
-              ))}
+              ) : error ? (
+                <tr>
+                  <td colSpan={5} className="aiMuted" style={{ padding: 24, textAlign: "center", color: "#c00" }}>
+                    {error?.message ?? "Failed to load access logs"}
+                  </td>
+                </tr>
+              ) : items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="aiMuted" style={{ padding: 24, textAlign: "center" }}>
+                    No access logs in this date range.
+                  </td>
+                </tr>
+              ) : (
+                items.map((row) => (
+                  <tr key={row.id}>
+                    <td><span className="aiUser">{row.username}</span></td>
+                    <td>{row.document_name}</td>
+                    <td>
+                      <span className={`aiAccessBadge aiAccessBadge-${row.access_level || "open_for_all"}`}>
+                        {accessLevelLabel(row.access_level)}
+                      </span>
+                    </td>
+                    <td>{actionLabel(row.action)}</td>
+                    <td className="aiMuted">{formatDateTime(row.date_time)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -76,14 +161,18 @@ export default function AccessIntelligence() {
         <h2 className="aiSectionTitle">Sensitive document access frequency</h2>
         <p className="aiSectionHint">High-security documents — access count over selected period.</p>
         <div className="aiCards">
-          {seedSensitiveFrequency.map((item, idx) => (
-            <div key={idx} className="aiFreqCard">
-              <div className="aiFreqDoc">{item.document}</div>
-              <div className="aiFreqCount">{item.accessCount}</div>
-              <div className="aiFreqLabel">accesses</div>
-              <span className={`aiAccessBadge aiAccessBadge-${item.level}`}>High security</span>
-            </div>
-          ))}
+          {sensitiveFrequency.length === 0 ? (
+            <p className="aiMuted">No high-security document access in this period.</p>
+          ) : (
+            sensitiveFrequency.map((item, idx) => (
+              <div key={idx} className="aiFreqCard">
+                <div className="aiFreqDoc">{item.document}</div>
+                <div className="aiFreqCount">{item.accessCount}</div>
+                <div className="aiFreqLabel">accesses</div>
+                <span className={`aiAccessBadge aiAccessBadge-${item.level}`}>High security</span>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </div>

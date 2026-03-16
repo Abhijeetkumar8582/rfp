@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import AppShell from "../../components/AppShell";
+import { DateRangeFilterDropdown, toDateString } from "../../components/DatePickerCalendar";
 import { API_BASE, endpointLogs as endpointLogsApi } from "../../../lib/api";
 import "../../css/dashboard.css";
 
@@ -26,17 +27,38 @@ export default function EndpointLogPage() {
   const [selectedLog, setSelectedLog] = useState(null);
   const [detailTab, setDetailTab] = useState("request"); // "request" | "response"
   const [filters, setFilters] = useState({ method: "", path: "", limit: 100 });
+  const [dateRangeFilter, setDateRangeFilter] = useState(null);
+  const [customDateStart, setCustomDateStart] = useState(null);
+  const [customDateEnd, setCustomDateEnd] = useState(null);
+  const [openDateDropdown, setOpenDateDropdown] = useState(false);
+
+  const todayStr = useMemo(() => toDateString(new Date()), []);
 
   const fetchLogs = async () => {
     setLoading(true);
     setError(null);
     try {
-      const list = await endpointLogsApi.list({
+      const params = {
         skip: 0,
         limit: filters.limit,
         ...(filters.method ? { method: filters.method } : {}),
         ...(filters.path ? { path: filters.path } : {}),
-      });
+      };
+      if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+        params.from_date = customDateStart;
+        params.to_date = customDateEnd;
+      } else if (dateRangeFilter === "today") {
+        params.from_date = todayStr;
+        params.to_date = todayStr;
+      } else if (dateRangeFilter === "last7" || dateRangeFilter === "last30") {
+        const days = dateRangeFilter === "last7" ? 7 : 30;
+        const end = new Date();
+        const start = new Date(end);
+        start.setDate(start.getDate() - days);
+        params.from_date = toDateString(start);
+        params.to_date = toDateString(end);
+      }
+      const list = await endpointLogsApi.list(params);
       setLogs(Array.isArray(list) ? list : []);
     } catch (e) {
       setError(e?.message || "Failed to load endpoint logs");
@@ -48,7 +70,7 @@ export default function EndpointLogPage() {
 
   useEffect(() => {
     fetchLogs();
-  }, [filters.limit, filters.method]);
+  }, [filters.limit, filters.method, dateRangeFilter, customDateStart, customDateEnd, todayStr]);
 
   // Path filter is applied when user clicks Refresh (avoids refetch on every keystroke)
 
@@ -66,6 +88,20 @@ export default function EndpointLogPage() {
           <div className="teamTableHeaderLeft">
             <div className="tableTitle">Executed endpoints</div>
             <div className="endpointLogFilters">
+              <DateRangeFilterDropdown
+                dateRangeFilter={dateRangeFilter}
+                onDateRangeFilterChange={setDateRangeFilter}
+                customDateStart={customDateStart}
+                customDateEnd={customDateEnd}
+                onCustomRangeChange={(start, end) => {
+                  setCustomDateStart(start);
+                  setCustomDateEnd(end);
+                }}
+                open={openDateDropdown}
+                onOpenChange={setOpenDateDropdown}
+                triggerLabel="Date range"
+                applyLabel="Apply range"
+              />
               <select
                 className="formInput formSelect endpointLogSelect"
                 value={filters.method}

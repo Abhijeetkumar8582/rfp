@@ -113,24 +113,36 @@ const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: IconApps },
   { href: "/search", label: "Search/Upload", icon: IconSearch },
   { href: "/upload-rfp", label: "My RFPs", icon: IconClipboard },
-  { href: "/filerepo", label: "File Repository", icon: IconFolder },
-  { href: "/project", label: "Intelligence Hub", icon: IconBrain },
+  { href: "/file-repository", label: "File Repository", icon: IconFolder },
+  { href: "/intelligence-hub", label: "Intelligence Hub", icon: IconBrain },
 ];
 
-const settingsNavItems = [
-  { href: "/activitylog", label: "Activity Log", icon: IconClipboard },
-  { href: "/accessintelligence", label: "Access Intelligence", icon: IconLock },
-  { href: "/integration", label: "Integrations", icon: IconPlug },
+const settingsNavItemsBase = [
+  { href: "/activitylog", label: "Activity Log", icon: IconClipboard, adminOnly: true },
+  { href: "/accessintelligence", label: "Access Intelligence", icon: IconLock, adminOnly: true },
+  { href: "/integration", label: "Integrations", icon: IconPlug, adminOnly: true },
 ];
 
-const settingsDropdownItems = [
-  { href: "/settings", label: "User", icon: IconUser },
-  { href: "/settings/api", label: "API Configuration", icon: IconApi },
-  { href: "/settings/endpoint-log", label: "Endpoint Log", icon: IconEndpointLog },
-  { href: "/settings/conversation-log", label: "Conversation Log", icon: IconConversation },
+const settingsDropdownItemsBase = [
+  { href: "/team-directory", label: "Team Directory", icon: IconUser, adminOnly: true },
+  { href: "/settings/api", label: "API Configuration", icon: IconApi, adminOnly: true },
+  { href: "/settings/endpoint-log", label: "Endpoint Log", icon: IconEndpointLog, adminOnly: true },
+  { href: "/settings/conversation-log", label: "Conversation Log", icon: IconConversation, adminOnly: true },
 ];
 
-const PROTECTED_PATHS = ["/dashboard", "/filerepo", "/search", "/upload-rfp", "/project", "/intelligence-hub", "/activitylog", "/accessintelligence", "/integration", "/settings"];
+const ADMIN_ONLY_PATHS = ["/activitylog", "/accessintelligence", "/settings", "/settings/endpoint-log", "/settings/conversation-log", "/settings/api", "/integration", "/team-directory"];
+
+const PROTECTED_PATHS = ["/dashboard", "/file-repository", "/search", "/upload-rfp", "/intelligence-hub", "/activitylog", "/accessintelligence", "/integration", "/settings", "/team-directory"];
+
+function canManageUsers(user) {
+  const role = (user?.role || "").toLowerCase();
+  return role === "admin" || role === "manager";
+}
+
+function isViewer(user) {
+  const role = (user?.role || "").toLowerCase();
+  return role === "viewer";
+}
 
 export default function AppShell({ children, mainClassName = "main" }) {
   const pathname = usePathname();
@@ -140,14 +152,32 @@ export default function AppShell({ children, mainClassName = "main" }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const settingsRef = useRef(null);
 
+  const settingsNavItems = settingsNavItemsBase.filter(
+    (item) => !item.adminOnly || canManageUsers(user)
+  );
+  const settingsDropdownItems = settingsDropdownItemsBase.filter(
+    (item) => !item.adminOnly || canManageUsers(user)
+  );
+
   const isProtected = PROTECTED_PATHS.some((p) => pathname === p || pathname?.startsWith(p + "/"));
-  const shouldRedirect = !loading && !user && isProtected;
+  const isAdminOnlyPath = ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname?.startsWith(p + "/"));
+  const isViewerOnDashboard = user && isViewer(user) && (pathname === "/dashboard" || pathname?.startsWith("/dashboard/"));
+  const shouldRedirectToLogin = !loading && !user && isProtected;
+  const shouldRedirectToDashboard = !loading && user && isAdminOnlyPath && !canManageUsers(user);
+  const shouldRedirectViewerFromDashboard = !loading && isViewerOnDashboard;
+  const shouldRedirect = shouldRedirectToLogin || shouldRedirectToDashboard || shouldRedirectViewerFromDashboard;
+
+  const mainNavItemsFiltered = mainNavItems.filter((item) => !(item.href === "/dashboard" && isViewer(user)));
 
   useEffect(() => {
-    if (shouldRedirect) {
+    if (shouldRedirectToLogin) {
       router.replace("/login");
+    } else if (shouldRedirectToDashboard) {
+      router.replace("/dashboard");
+    } else if (shouldRedirectViewerFromDashboard) {
+      router.replace("/search");
     }
-  }, [shouldRedirect, router]);
+  }, [shouldRedirectToLogin, shouldRedirectToDashboard, shouldRedirectViewerFromDashboard, router]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -161,7 +191,7 @@ export default function AppShell({ children, mainClassName = "main" }) {
     }
   }, [settingsOpen]);
 
-  if (shouldRedirect) {
+  if (shouldRedirectToLogin || shouldRedirectToDashboard || shouldRedirectViewerFromDashboard) {
     return null;
   }
 
@@ -197,7 +227,7 @@ export default function AppShell({ children, mainClassName = "main" }) {
         </div>
 
         <nav className="nav">
-          {mainNavItems.map(({ href, label, icon: Icon }) => (
+          {mainNavItemsFiltered.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -209,54 +239,56 @@ export default function AppShell({ children, mainClassName = "main" }) {
             </Link>
           ))}
 
-          <div className={`navGroup ${sidebarCollapsed ? "navGroupCollapsed" : ""}`}>
-            <div className="navGroupTitle">Settings</div>
-            {settingsNavItems.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`navItem navItemSub ${isActive(href) ? "navItemActive" : ""}`}
-                title={sidebarCollapsed ? label : undefined}
-              >
-                <span className="navIcon"><Icon /></span>
-                <span className="navLabel">{label}</span>
-              </Link>
-            ))}
-            <div className={`settingsDropdownWrap ${sidebarCollapsed ? "settingsDropdownWrapCollapsed" : ""}`} ref={settingsRef}>
-              <button
-                type="button"
-                onClick={() => setSettingsOpen((o) => !o)}
-                className={`navItem settingsDropdownBtn ${settingsOpen ? "navItemActive" : ""}`}
-                aria-expanded={settingsOpen}
-                aria-haspopup="true"
-                title={sidebarCollapsed ? "Settings" : undefined}
-              >
-                <span className="navIcon"><IconSettings /></span>
-                <span className="navLabel">Settings</span>
-                <span className={`navCaret ${settingsOpen ? "navCaretOpen" : ""} ${sidebarCollapsed ? "navCaretHidden" : ""}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </span>
-              </button>
-              {settingsOpen && (
-                <div className="settingsDropdown">
-                  {settingsDropdownItems.map(({ href, label, icon: Icon }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      onClick={() => setSettingsOpen(false)}
-                      className={`navItem navItemSub ${isActive(href) ? "navItemActive" : ""}`}
-                      title={sidebarCollapsed ? label : undefined}
-                    >
-                      <span className="navIcon"><Icon /></span>
-                      <span className="navLabel">{label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
+          {canManageUsers(user) && (
+            <div className={`navGroup ${sidebarCollapsed ? "navGroupCollapsed" : ""}`}>
+              <div className="navGroupTitle">Settings</div>
+              {settingsNavItems.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`navItem navItemSub ${isActive(href) ? "navItemActive" : ""}`}
+                  title={sidebarCollapsed ? label : undefined}
+                >
+                  <span className="navIcon"><Icon /></span>
+                  <span className="navLabel">{label}</span>
+                </Link>
+              ))}
+              <div className={`settingsDropdownWrap ${sidebarCollapsed ? "settingsDropdownWrapCollapsed" : ""}`} ref={settingsRef}>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen((o) => !o)}
+                  className={`navItem settingsDropdownBtn ${settingsOpen ? "navItemActive" : ""}`}
+                  aria-expanded={settingsOpen}
+                  aria-haspopup="true"
+                  title={sidebarCollapsed ? "Settings" : undefined}
+                >
+                  <span className="navIcon"><IconSettings /></span>
+                  <span className="navLabel">Settings</span>
+                  <span className={`navCaret ${settingsOpen ? "navCaretOpen" : ""} ${sidebarCollapsed ? "navCaretHidden" : ""}`}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </span>
+                </button>
+                {settingsOpen && (
+                  <div className="settingsDropdown">
+                    {settingsDropdownItems.map(({ href, label, icon: Icon }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setSettingsOpen(false)}
+                        className={`navItem navItemSub ${isActive(href) ? "navItemActive" : ""}`}
+                        title={sidebarCollapsed ? label : undefined}
+                      >
+                        <span className="navIcon"><Icon /></span>
+                        <span className="navLabel">{label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </nav>
 
         <button type="button" onClick={handleLogout} className="logout" style={{ background: "none", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "inherit", font: "inherit", color: "inherit" }} title={sidebarCollapsed ? "Logout" : undefined}>

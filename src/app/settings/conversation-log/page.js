@@ -1,9 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import AppShell from "../../components/AppShell";
+import { DateRangeFilterDropdown, toDateString } from "../../components/DatePickerCalendar";
 import { searchQueries as searchQueriesApi } from "../../../lib/api";
 import "../../css/dashboard.css";
+
+function dateRangeSummary(dateRangeFilter, customDateStart, customDateEnd, todayStr) {
+  if (!dateRangeFilter) return " for today";
+  if (dateRangeFilter === "today") return " for today";
+  if (dateRangeFilter === "last7") return " for last 7 days";
+  if (dateRangeFilter === "last30") return " for last 30 days";
+  if (dateRangeFilter === "custom" && customDateStart && customDateEnd) return ` for ${customDateStart} – ${customDateEnd}`;
+  return " for today";
+}
 
 function formatTs(ts) {
   if (!ts) return "—";
@@ -45,24 +55,75 @@ const IconChevron = () => (
   </svg>
 );
 
+/** Group raw query rows by conversation_id. Returns list of { conversationId, firstTs, lastTs, messageCount, firstQueryPreview, firstTopic, firstStatus }. */
+function groupByConversation(queries) {
+  const byConv = new Map();
+  for (const row of queries) {
+    const cid = row.conversation_id != null ? String(row.conversation_id) : `single-${row.id}`;
+    if (!byConv.has(cid)) {
+      byConv.set(cid, {
+        conversationId: cid,
+        firstTs: row.ts,
+        lastTs: row.ts,
+        messageCount: 0,
+        firstQueryPreview: row.query_text,
+        firstTopic: row.topic,
+        firstStatus: row.answer_status,
+      });
+    }
+    const g = byConv.get(cid);
+    g.messageCount += 1;
+    g.lastTs = row.ts;
+  }
+  return Array.from(byConv.values()).sort((a, b) => {
+    const tA = a.lastTs ? new Date(a.lastTs).getTime() : 0;
+    const tB = b.lastTs ? new Date(b.lastTs).getTime() : 0;
+    return tB - tA;
+  });
+}
+
+function shortId(conversationId) {
+  if (!conversationId || typeof conversationId !== "string") return "—";
+  if (conversationId.startsWith("single-")) return conversationId;
+  return conversationId.length > 12 ? conversationId.slice(-10) : conversationId;
+}
+
 export default function ConversationLogPage() {
   const [queries, setQueries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selected, setSelected] = useState(null);
-  const [projectIdInput, setProjectIdInput] = useState("");
-  const [appliedProjectId, setAppliedProjectId] = useState("");
-  const [limit, setLimit] = useState(100);
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
+  const [conversationMessages, setConversationMessages] = useState([]);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const [conversationError, setConversationError] = useState(null);
+  const [dateRangeFilter, setDateRangeFilter] = useState(null);
+  const [customDateStart, setCustomDateStart] = useState(null);
+  const [customDateEnd, setCustomDateEnd] = useState(null);
+  const [dateRangeOpen, setDateRangeOpen] = useState(false);
+
+  const todayStr = useMemo(() => toDateString(new Date()), []);
+
+  const conversations = groupByConversation(queries);
 
   const fetchQueries = async () => {
     setLoading(true);
     setError(null);
     try {
-      const list = await searchQueriesApi.list({
-        skip: 0,
-        limit,
-        ...(appliedProjectId ? { projectId: appliedProjectId } : {}),
-      });
+      const params = { skip: 0, limit: 500 };
+      if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+        params.from_date = customDateStart;
+        params.to_date = customDateEnd;
+      } else if (dateRangeFilter === "today") {
+        params.on_date = todayStr;
+      } else if (dateRangeFilter === "last7" || dateRangeFilter === "last30") {
+        const days = dateRangeFilter === "last7" ? 7 : 30;
+        const end = new Date();
+        const start = new Date(end);
+        start.setDate(start.getDate() - days);
+        params.from_date = toDateString(start);
+        params.to_date = toDateString(end);
+      }
+      const list = await searchQueriesApi.list(params);
       setQueries(Array.isArray(list) ? list : []);
     } catch (e) {
       setError(e?.message || "Failed to load conversation log");
@@ -74,10 +135,38 @@ export default function ConversationLogPage() {
 
   useEffect(() => {
     fetchQueries();
-  }, [limit, appliedProjectId]);
+  }, [dateRangeFilter, customDateStart, customDateEnd, todayStr]);
 
-  const handleApplyFilter = () => {
-    setAppliedProjectId(projectIdInput.trim());
+  const handleSelectConversation = async (conversationId) => {
+    if (conversationId.startsWith("single-")) {
+      const id = parseInt(conversationId.replace("single-", ""), 10);
+      const single = queries.find((q) => q.id === id);
+      if (single) {
+        setSelectedConversationId(conversationId);
+        setConversationMessages([single]);
+        setConversationError(null);
+        return;
+      }
+    }
+    setSelectedConversationId(conversationId);
+    setConversationMessages([]);
+    setConversationError(null);
+    setLoadingConversation(true);
+    try {
+      const list = await searchQueriesApi.getByConversationId(conversationId);
+      setConversationMessages(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setConversationError(e?.message || "Failed to load conversation");
+      setConversationMessages([]);
+    } finally {
+      setLoadingConversation(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setSelectedConversationId(null);
+    setConversationMessages([]);
+    setConversationError(null);
   };
 
   return (
@@ -85,81 +174,46 @@ export default function ConversationLogPage() {
       <header className="headerRow">
         <div>
           <h1 className="pageTitle">Conversation Log</h1>
-          <div className="pageSub">Search queries and answers from the search_queries table</div>
+          <div className="pageSub">Tracks user queries, responses, timestamps, and conversation performance analytics.
+          </div>
         </div>
       </header>
 
       <section className="panel tablePanel conversationLogPanel">
-        <div className="conversationLogToolbar">
-          <div className="conversationLogToolbarTitle">Search queries</div>
-          <div className="conversationLogFilters">
-            <div className="conversationLogFilterGroup">
-              <label htmlFor="conversation-log-project" className="conversationLogLabel">
-                Project ID
-              </label>
-              <input
-                id="conversation-log-project"
-                type="text"
-                className="formInput conversationLogProjectInput"
-                placeholder="All projects"
-                value={projectIdInput}
-                onChange={(e) => setProjectIdInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleApplyFilter()}
-                aria-label="Filter by project ID"
-              />
-            </div>
-            <div className="conversationLogFilterGroup">
-              <label htmlFor="conversation-log-limit" className="conversationLogLabel">
-                Items per page
-              </label>
-              <select
-                id="conversation-log-limit"
-                className="formInput formSelect conversationLogLimitSelect"
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
-                aria-label="Items per page"
-              >
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-                <option value={500}>500</option>
-              </select>
-            </div>
-            <div className="conversationLogFilterActions">
-              <button
-                type="button"
-                className="conversationLogBtn conversationLogBtnSecondary"
-                onClick={handleApplyFilter}
-                aria-label="Apply project filter"
-              >
-                Apply filter
-              </button>
-              <button
-                type="button"
-                className="conversationLogBtn conversationLogBtnPrimary"
-                onClick={fetchQueries}
-                disabled={loading}
-                aria-label="Refresh list"
-              >
-                <span className="conversationLogBtnIcon"><IconRefresh /></span>
-                Refresh
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div className="conversationLogSummary">
           {!loading && !error && (
             <span className="conversationLogSummaryText">
-              Showing {queries.length} result{queries.length !== 1 ? "s" : ""}
-              {appliedProjectId && (
-                <span className="conversationLogSummaryFilter"> · Project: {appliedProjectId}</span>
-              )}
+              Showing {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
+              {dateRangeSummary(dateRangeFilter, customDateStart, customDateEnd, todayStr)}
             </span>
           )}
-          {!loading && queries.length > 0 && (
-            <span className="conversationLogSummaryHint">Click a row to view the full conversation</span>
-          )}
+          <div className="conversationLogSummaryActions">
+            <DateRangeFilterDropdown
+              dateRangeFilter={dateRangeFilter}
+              onDateRangeFilterChange={setDateRangeFilter}
+              customDateStart={customDateStart}
+              customDateEnd={customDateEnd}
+              onCustomRangeChange={(start, end) => {
+                setCustomDateStart(start);
+                setCustomDateEnd(end);
+              }}
+              open={dateRangeOpen}
+              onOpenChange={setDateRangeOpen}
+              triggerLabel="Date range"
+              applyLabel="Apply range"
+              wrapClassName="conversationLogDateDropdownWrap"
+            />
+            <button
+              type="button"
+              className="conversationLogBtn conversationLogBtnPrimary"
+              onClick={fetchQueries}
+              disabled={loading}
+              aria-label="Refresh list"
+            >
+              <span className="conversationLogBtnIcon"><IconRefresh /></span>
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div className="conversationLogTableWrap">
@@ -173,12 +227,12 @@ export default function ConversationLogPage() {
               <div className="dashboardSpinner" aria-hidden />
               <span>Loading conversation log…</span>
             </div>
-          ) : queries.length === 0 ? (
+          ) : conversations.length === 0 ? (
             <div className="conversationLogEmpty">
               <span className="conversationLogEmptyIcon"><IconMessage /></span>
-              <p className="conversationLogEmptyTitle">No search queries yet</p>
+              <p className="conversationLogEmptyTitle">No conversations yet</p>
               <p className="conversationLogEmptyText">
-                Queries will appear here after you run searches from Search/Upload or Intelligence Hub.
+                Conversations will appear here after you run searches from Search/Upload or Intelligence Hub.
               </p>
               <button type="button" className="conversationLogBtn conversationLogBtnPrimary" onClick={fetchQueries}>
                 <span className="conversationLogBtnIcon"><IconRefresh /></span>
@@ -189,41 +243,45 @@ export default function ConversationLogPage() {
             <table className="table conversationLogTable" role="grid" aria-label="Conversation log entries">
               <thead>
                 <tr>
-                  <th scope="col">Timestamp</th>
-                  <th scope="col">Project</th>
-                  <th scope="col">Query</th>
+                  <th scope="col">Conversation</th>
+                  <th scope="col">Started</th>
+                  <th scope="col">Messages</th>
+                  <th scope="col">First message</th>
                   <th scope="col">Status</th>
                   <th scope="col">Topic</th>
                   <th scope="col" className="conversationLogColAction" aria-label="View" />
                 </tr>
               </thead>
               <tbody>
-                {queries.map((row, index) => (
+                {conversations.map((conv) => (
                   <tr
-                    key={row.id}
+                    key={conv.conversationId}
                     className="conversationLogRow"
-                    onClick={() => setSelected(row)}
+                    onClick={() => handleSelectConversation(conv.conversationId)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setSelected(row);
+                        handleSelectConversation(conv.conversationId);
                       }
                     }}
-                    aria-label={`View conversation ${row.id}, ${formatTs(row.ts)}`}
+                    aria-label={`Open conversation ${shortId(conv.conversationId)}, ${conv.messageCount} messages`}
                   >
-                    <td className="conversationLogTs">{formatTs(row.ts)}</td>
-                    <td className="conversationLogProject">{row.project_id || "—"}</td>
-                    <td className="conversationLogQuery" title={row.query_text || undefined}>
-                      {truncate(row.query_text, 70)}
+                    <td className="conversationLogConvId" title={conv.conversationId}>
+                      {shortId(conv.conversationId)}
+                    </td>
+                    <td className="conversationLogTs">{formatTs(conv.firstTs)}</td>
+                    <td className="conversationLogCount">{conv.messageCount}</td>
+                    <td className="conversationLogQuery" title={conv.firstQueryPreview || undefined}>
+                      {truncate(conv.firstQueryPreview, 50)}
                     </td>
                     <td>
-                      <span className={`conversationLogStatus conversationLogStatus_${(row.answer_status || "unknown").replace(/[^a-z0-9]/gi, "_").toLowerCase()}`}>
-                        {row.answer_status || "—"}
+                      <span className={`conversationLogStatus conversationLogStatus_${(conv.firstStatus || "unknown").replace(/[^a-z0-9]/gi, "_").toLowerCase()}`}>
+                        {conv.firstStatus || "—"}
                       </span>
                     </td>
-                    <td className="conversationLogTopic">{row.topic || "—"}</td>
+                    <td className="conversationLogTopic">{conv.firstTopic || "—"}</td>
                     <td className="conversationLogColAction">
                       <span className="conversationLogRowAction" aria-hidden>
                         <IconChevron />
@@ -237,10 +295,10 @@ export default function ConversationLogPage() {
         </div>
       </section>
 
-      {selected && (
+      {selectedConversationId && (
         <div
           className="modalBackdrop conversationLogModalBackdrop"
-          onClick={() => setSelected(null)}
+          onClick={handleCloseModal}
           role="dialog"
           aria-modal="true"
           aria-labelledby="conversation-log-detail-title"
@@ -251,12 +309,12 @@ export default function ConversationLogPage() {
           >
             <div className="conversationLogModalHeader">
               <h2 className="conversationLogModalTitle" id="conversation-log-detail-title">
-                Conversation #{selected.id}
+                Conversation {shortId(selectedConversationId)}
               </h2>
               <button
                 type="button"
                 className="conversationLogModalClose"
-                onClick={() => setSelected(null)}
+                onClick={handleCloseModal}
                 aria-label="Close"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -265,35 +323,55 @@ export default function ConversationLogPage() {
               </button>
             </div>
             <div className="conversationLogModalMeta">
-              <span className="conversationLogModalMetaItem">{formatTs(selected.ts)}</span>
-              <span className="conversationLogModalMetaItem">Project: {selected.project_id || "—"}</span>
-              {selected.topic && <span className="conversationLogModalMetaItem">Topic: {selected.topic}</span>}
-              {selected.answer_status && <span className="conversationLogModalMetaItem">Status: {selected.answer_status}</span>}
+              {conversationMessages.length > 0 && (
+                <>
+                  <span className="conversationLogModalMetaItem">
+                    {formatTs(conversationMessages[0].ts)}
+                    {conversationMessages.length > 1 && ` – ${formatTs(conversationMessages[conversationMessages.length - 1].ts)}`}
+                  </span>
+                  <span className="conversationLogModalMetaItem">{conversationMessages.length} message pair{conversationMessages.length !== 1 ? "s" : ""}</span>
+                </>
+              )}
             </div>
             <div className="conversationLogDetail">
-              <div className="conversationLogMessages">
-                <div className="conversationLogMessage conversationLogMessageUser">
-                  <div className="conversationLogMessageLabel">
-                    <span className="conversationLogMessageRole">User</span>
-                    <span className="conversationLogMessageTime">{formatTs(selected.ts)}</span>
-                  </div>
-                  <div className="conversationLogMessageContent">
-                    {selected.query_text || "—"}
-                  </div>
+              {loadingConversation ? (
+                <div className="conversationLogLoading">
+                  <div className="dashboardSpinner" aria-hidden />
+                  <span>Loading conversation…</span>
                 </div>
-                <div className="conversationLogMessage conversationLogMessageAssistant">
-                  <div className="conversationLogMessageLabel">
-                    <span className="conversationLogMessageRole">Assistant</span>
-                    <span className="conversationLogMessageTime">Answer</span>
-                  </div>
-                  <div className="conversationLogMessageContent">
-                    {selected.answer != null && selected.answer !== "" ? selected.answer : "— No answer stored —"}
-                  </div>
+              ) : conversationError ? (
+                <div className="conversationLogError" role="alert">
+                  {conversationError}
                 </div>
-              </div>
+              ) : (
+                <div className="conversationLogMessages">
+                  {conversationMessages.map((msg) => (
+                    <div key={msg.id} className="conversationLogMessagePair">
+                      <div className="conversationLogMessage conversationLogMessageUser">
+                        <div className="conversationLogMessageLabel">
+                          <span className="conversationLogMessageRole">User</span>
+                          <span className="conversationLogMessageTime">{formatTs(msg.ts)}</span>
+                        </div>
+                        <div className="conversationLogMessageContent">
+                          {msg.query_text || "—"}
+                        </div>
+                      </div>
+                      <div className="conversationLogMessage conversationLogMessageAssistant">
+                        <div className="conversationLogMessageLabel">
+                          <span className="conversationLogMessageRole">Assistant</span>
+                          <span className="conversationLogMessageTime">Answer</span>
+                        </div>
+                        <div className="conversationLogMessageContent">
+                          {msg.answer != null && msg.answer !== "" ? msg.answer : "— No answer stored —"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="conversationLogModalFooter">
-              <button type="button" className="conversationLogBtn conversationLogBtnSecondary conversationLogModalCloseBtn" onClick={() => setSelected(null)}>
+              <button type="button" className="conversationLogBtn conversationLogBtnSecondary conversationLogModalCloseBtn" onClick={handleCloseModal}>
                 Close
               </button>
             </div>

@@ -1112,6 +1112,14 @@
   background: var(--soft);
 }
 
+.rowActionItemDanger {
+  color: var(--colorError, #dc2626);
+}
+
+.rowActionItemDanger:hover {
+  background: var(--danger-bg, rgba(220, 38, 38, 0.08));
+}
+
 /* Actions row */
 .actionsRow {
   display: flex;
@@ -1630,6 +1638,25 @@
 
 .editUserModal {
   padding: 28px 32px;
+}
+
+.editUserModal .formInput,
+.editUserModal .formSelect {
+  background: #fff;
+  color: #000;
+  border-color: #d1d5db;
+}
+
+.editUserModal .formInput::placeholder {
+  color: #6b7280;
+}
+
+.editUserModal .formInput:-webkit-autofill,
+.editUserModal .formInput:-webkit-autofill:hover,
+.editUserModal .formInput:-webkit-autofill:focus {
+  -webkit-text-fill-color: #000;
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  box-shadow: 0 0 0 1000px #fff inset;
 }
 
 .modalTitle {
@@ -2779,80 +2806,12 @@
 /* ----- Conversation Log — production-ready ----- */
 .conversationLogPanel {
   margin-top: 20px;
+  min-height: 500px;
   background: var(--panel, #fff);
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
-}
-
-.conversationLogToolbar {
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border, #e5e7eb);
-  background: #fafafa;
-}
-
-.conversationLogToolbarTitle {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-heading);
-  font-family: var(--font-family);
-  color: var(--text, #111827);
-  margin-bottom: 16px;
-  letter-spacing: -0.01em;
-}
-
-.conversationLogFilters {
-  display: flex;
-  align-items: flex-end;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.conversationLogFilterGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.conversationLogLabel {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted, #6b7280);
-  letter-spacing: 0.02em;
-}
-
-.conversationLogProjectInput {
-  min-width: 200px;
-  max-width: 260px;
-  padding: 10px 12px;
-  font-size: 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #e5e7eb);
-  background: #fff;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.conversationLogProjectInput:focus {
-  outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
-}
-
-.conversationLogLimitSelect {
-  width: auto;
-  min-width: 100px;
-  padding: 10px 12px;
-  font-size: 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #e5e7eb);
-  background: #fff;
-}
-
-.conversationLogFilterActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
 }
 
 .conversationLogBtn {
@@ -2922,6 +2881,87 @@
   font-size: 13px;
 }
 
+.conversationLogSummaryActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: visible;
+}
+
+/* Date range dropdown: align panel to the right so it opens left and stays inside the container */
+.conversationLogDateDropdownWrap {
+  position: relative;
+  display: inline-block;
+  overflow: visible;
+}
+
+/* Production-ready trigger button: docSelect / docFilterDropdownTrigger */
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger,
+.conversationLogDateDropdownWrap .docSelect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 999px;
+  background: var(--panel, #fff);
+  color: var(--text, #111827);
+  font-size: var(--text-secondary-small, 13px);
+  font-weight: 600;
+  font-family: var(--font-family, inherit);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger:hover,
+.conversationLogDateDropdownWrap .docSelect:hover {
+  border-color: var(--brand, #2563eb);
+  background: var(--brand-tint, #eff6ff);
+  color: var(--brand-hover, #1d4ed8);
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger:focus-visible,
+.conversationLogDateDropdownWrap .docSelect:focus-visible {
+  outline: none;
+  border-color: var(--brand, #2563eb);
+  box-shadow: 0 0 0 3px var(--brand-tint, rgba(37, 99, 235, 0.2));
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger:active,
+.conversationLogDateDropdownWrap .docSelect:active {
+  background: var(--soft, #f3f4f6);
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger[aria-expanded="true"],
+.conversationLogDateDropdownWrap .docSelect[aria-expanded="true"] {
+  border-color: var(--brand, #2563eb);
+  background: var(--brand-tint, #eff6ff);
+  color: var(--brand-hover, #1d4ed8);
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownCaret {
+  font-size: 10px;
+  opacity: 0.85;
+  transition: transform 0.2s ease;
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownTrigger[aria-expanded="true"] .docFilterDropdownCaret,
+.conversationLogDateDropdownWrap .docSelect[aria-expanded="true"] .docFilterDropdownCaret {
+  transform: rotate(180deg);
+}
+
+.conversationLogDateDropdownWrap .docFilterDropdownPanel {
+  left: auto;
+  right: 0;
+}
+
 .conversationLogSummaryText {
   color: var(--muted, #6b7280);
 }
@@ -2931,14 +2971,15 @@
   font-weight: 500;
 }
 
-.conversationLogSummaryHint {
-  color: var(--muted, #6b7280);
-  font-size: 12px;
-}
-
 .conversationLogTableWrap {
   min-height: 280px;
   overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.conversationLogTableWrap::-webkit-scrollbar {
+  display: none;
 }
 
 .conversationLogError {
@@ -3051,6 +3092,21 @@
 
 .conversationLogRow:focus-visible {
   box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
+.conversationLogConvId {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversationLogCount {
+  text-align: center;
+  font-weight: 600;
+  color: var(--text, #111827);
 }
 
 .conversationLogTs {
@@ -3227,12 +3283,31 @@
   flex: 1;
   min-height: 120px;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.conversationLogDetail::-webkit-scrollbar {
+  display: none;
 }
 
 .conversationLogMessages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+}
+
+.conversationLogMessagePair {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.conversationLogMessagePair:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .conversationLogMessage {
@@ -3293,27 +3368,15 @@
 }
 
 @media (max-width: 640px) {
-  .conversationLogFilters {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .conversationLogFilterGroup {
-    max-width: none;
-  }
-
-  .conversationLogProjectInput {
-    max-width: none;
-  }
-
-  .conversationLogFilterActions {
-    margin-left: 0;
-    flex-wrap: wrap;
-  }
-
   .conversationLogSummary {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .conversationLogDateDropdownWrap .docFilterDropdownTrigger,
+  .conversationLogDateDropdownWrap .docSelect {
+    width: 100%;
+    justify-content: center;
   }
 
   .conversationLogTable {

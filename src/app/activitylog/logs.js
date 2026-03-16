@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { activity as activityApi } from "../../lib/api";
+import { DateRangeFilterDropdown, toDateString } from "../components/DatePickerCalendar";
 import "../css/logs.css";
 
 const severityLabel = {
@@ -25,12 +26,17 @@ function formatTimestamp(ts) {
 export default function ActivityLog() {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [totalLast7Days, setTotalLast7Days] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [search, setSearch] = useState("");
-  const [filterPill, setFilterPill] = useState("All"); // All | Critical | Security | Adv. Filter
+  const [filterPill, setFilterPill] = useState("All"); // All | Critical | Security | 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [dateRangeFilter, setDateRangeFilter] = useState(null);
+  const [customDateStart, setCustomDateStart] = useState(null);
+  const [customDateEnd, setCustomDateEnd] = useState(null);
+  const [openDateDropdown, setOpenDateDropdown] = useState(false);
 
   useEffect(() => {
     activityApi.create({
@@ -42,41 +48,48 @@ export default function ActivityLog() {
     }).catch(() => {});
   }, [user?.name, user?.email]);
 
+  const todayStr = useMemo(() => toDateString(new Date()), []);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const list = await activityApi.list({ limit: 200 });
-      setEvents(Array.isArray(list) ? list : []);
+      const skip = (currentPage - 1) * pageSize;
+      const params = { skip, limit: pageSize };
+      if (filterPill === "Critical") params.severity = "critical";
+      else if (filterPill === "Security") params.severity_in = "critical,security";
+      if (dateRangeFilter === "custom" && customDateStart && customDateEnd) {
+        params.from_date = customDateStart;
+        params.to_date = customDateEnd;
+      } else if (dateRangeFilter === "today") {
+        params.from_date = todayStr;
+        params.to_date = todayStr;
+      } else if (dateRangeFilter === "last7" || dateRangeFilter === "last30") {
+        const days = dateRangeFilter === "last7" ? 7 : 30;
+        const end = new Date();
+        const start = new Date(end);
+        start.setDate(start.getDate() - days);
+        params.from_date = toDateString(start);
+        params.to_date = toDateString(end);
+      }
+      const res = await activityApi.list(params);
+      const items = res?.items ?? [];
+      setEvents(Array.isArray(items) ? items : []);
+      setTotal(typeof res?.total === "number" ? res.total : 0);
+      setTotalLast7Days(typeof res?.total_last_7_days === "number" ? res.total_last_7_days : 0);
     } catch (e) {
       setError(e?.message || "Failed to load activity logs");
       setEvents([]);
+      setTotal(0);
+      setTotalLast7Days(0);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentPage, pageSize, filterPill, dateRangeFilter, customDateStart, customDateEnd, todayStr]);
 
   useEffect(() => {
     fetchLogs();
-  }, [fetchLogs]);
-
-  const filteredEvents = useMemo(() => {
-    let list = events;
-    if (filterPill === "Critical") list = list.filter((e) => (e.severity || "").toLowerCase() === "critical");
-    else if (filterPill === "Security") list = list.filter((e) => {
-      const s = (e.severity || "").toLowerCase();
-      return s === "security" || s === "critical";
-    });
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (e) =>
-        (e.actor || "").toLowerCase().includes(q) ||
-        (e.ip_address || "").toLowerCase().includes(q) ||
-        (e.event_action || "").toLowerCase().includes(q) ||
-        (e.target_resource || "").toLowerCase().includes(q)
-    );
-  }, [events, search, filterPill]);
+  }, [currentPage, pageSize, filterPill, dateRangeFilter, customDateStart, customDateEnd, fetchLogs]);
 
   const securityCount = useMemo(() =>
     events.filter((e) => { const s = (e.severity || "").toLowerCase(); return s === "security" || s === "critical"; }).length,
@@ -87,19 +100,13 @@ export default function ActivityLog() {
     [events]
   );
 
-  // Pagination: slice filtered list to current page
-  const totalFiltered = filteredEvents.length;
-  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pageStart = (currentPage - 1) * pageSize;
-  const paginatedEvents = useMemo(
-    () => filteredEvents.slice(pageStart, pageStart + pageSize),
-    [filteredEvents, pageStart, pageSize]
-  );
 
-  // Reset to page 1 when filters/search change
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, filterPill]);
+  }, [filterPill, dateRangeFilter, customDateStart, customDateEnd]);
 
   return (
     <div className="glPage">
@@ -122,31 +129,31 @@ export default function ActivityLog() {
       {/* Stats */}
       <div className="glStats">
         <div className="glStatCard">
-          <div className="glStatValue">{events.length}</div>
+          <div className="glStatValue">{total}</div>
           <div className="glStatLabel">Total Events</div>
-          <div className="glStatMeta">Platform activity</div>
+          <div className="glStatMeta">Matching filters</div>
+        </div>
+        <div className="glStatCard glStatCard-score">
+          <div className="glStatValue">{totalLast7Days}</div>
+          <div className="glStatLabel">Last 7 Days</div>
+          <div className="glStatMeta">Total in past week</div>
         </div>
         <div className="glStatCard glStatCard-flag">
           <div className="glStatValue">{securityCount}</div>
           <div className="glStatLabel">Security Flags</div>
-          <div className="glStatMeta">Requires Review</div>
+          <div className="glStatMeta">On this page</div>
         </div>
         <div className="glStatCard">
           <div className="glStatValue">{adminCount}</div>
           <div className="glStatLabel">Admin Actions</div>
-          <div className="glStatMeta">Config Changes</div>
-        </div>
-        <div className="glStatCard glStatCard-score">
-          <div className="glStatValue">{filteredEvents.length}</div>
-          <div className="glStatLabel">Filtered</div>
-          <div className="glStatMeta">Current view</div>
+          <div className="glStatMeta">On this page</div>
         </div>
       </div>
 
-      {/* Filters + Search */}
+      {/* Filters + Date range */}
       <div className="glToolbar">
         <div className="glFilters">
-          {["All", "Critical", "Security", "Adv. Filter"].map((pill) => (
+          {["All", "Critical", "Security"].map((pill) => (
             <button
               key={pill}
               type="button"
@@ -157,16 +164,21 @@ export default function ActivityLog() {
             </button>
           ))}
         </div>
-        <div className="glSearchWrap">
-          <span className="glSearchIcon" aria-hidden>🔎</span>
-          <input
-            type="text"
-            className="glSearchInput"
-            placeholder="Search logs (User, IP, Action)..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        <DateRangeFilterDropdown
+          dateRangeFilter={dateRangeFilter}
+          onDateRangeFilterChange={setDateRangeFilter}
+          customDateStart={customDateStart}
+          customDateEnd={customDateEnd}
+          onCustomRangeChange={(start, end) => {
+            setCustomDateStart(start);
+            setCustomDateEnd(end);
+          }}
+          open={openDateDropdown}
+          onOpenChange={setOpenDateDropdown}
+          triggerLabel="Date range"
+          applyLabel="Apply range"
+          wrapClassName="glDateRangeWrap"
+        />
       </div>
 
       {/* Table */}
@@ -188,14 +200,14 @@ export default function ActivityLog() {
               </tr>
             </thead>
             <tbody>
-              {filteredEvents.length === 0 ? (
+              {events.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={6} className="glTableEmpty">
-                    {events.length === 0 ? "No activity logs yet. Actions across the app will appear here." : "No events match your filters."}
+                    {total === 0 ? "No activity logs yet. Actions across the app will appear here." : "No events match your filters."}
                   </td>
                 </tr>
               ) : (
-                paginatedEvents.map((row) => (
+                events.map((row) => (
                   <tr key={row.id}>
                     <td className="glCell glCell-time">{formatTimestamp(row.timestamp)}</td>
                     <td className="glCell">{row.actor ?? "—"}</td>
@@ -216,10 +228,10 @@ export default function ActivityLog() {
       </div>
 
       {/* Pagination */}
-      {!loading && filteredEvents.length > 0 && (
+      {!loading && total > 0 && (
         <div className="glPagination">
           <div className="glPaginationInfo">
-            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, totalFiltered)} of {totalFiltered}
+            Showing {pageStart + 1}–{Math.min(pageStart + events.length, total)} of {total}
           </div>
           <div className="glPaginationControls">
             <select

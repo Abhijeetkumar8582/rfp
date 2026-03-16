@@ -41,11 +41,6 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const register = useCallback(async (email, name, password) => {
-    const userData = await apiAuth.register(email, name, password);
-    return userData;
-  }, []);
-
   const logout = useCallback(async () => {
     const currentUser = getStoredUser();
     try {
@@ -68,7 +63,6 @@ export function AuthProvider({ children }) {
     loading,
     isAuthenticated: !!user,
     login,
-    register,
     logout,
     refreshUser: loadUser,
   };
