@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
 import { activity as activityApi, intelligenceHub as intelligenceHubApi, projects as projectsApi, dashboard as dashboardApi } from "../../lib/api";
-import "../css/project.css";
+import { isAdminLike } from "../../lib/rbac";
+import "../css/intelligence-hub.css";
 
 const GAPS_PREVIEW_COUNT = 3;
 const LOW_CONFIDENCE_PREVIEW_COUNT = 3;
@@ -68,10 +69,7 @@ export default function IntelligenceHub() {
   const knowledgeGaps = knowledgeGapsData?.items ?? [];
   const error = hubError ? (hubErr?.message || "Failed to load Intelligence Hub data") : null;
 
-  const canManageReviewGaps = (() => {
-    const role = (user?.role || "").toLowerCase();
-    return role === "admin" || role === "manager";
-  })();
+  const canManageReviewGaps = isAdminLike(user);
 
   const gapsPreview = useMemo(() => knowledgeGaps.slice(0, GAPS_PREVIEW_COUNT), [knowledgeGaps]);
 

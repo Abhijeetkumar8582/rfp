@@ -4,13 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
 import { users as usersApi, createUserInvite } from "../../lib/api";
+import { isAdminLike } from "../../lib/rbac";
 import "../css/dashboard.css";
-
-/** True if current user can create/delete users (Super Admin or Admin). */
-function canManageUsers(user) {
-  const role = (user?.role || "").toLowerCase();
-  return role === "admin" || role === "manager";
-}
 
 /** Format date for display (e.g. "Feb 10, 2023"). */
 function formatJoinDate(createdAt) {
@@ -85,7 +80,7 @@ export default function TeamDirectoryPage() {
   const [openKebabId, setOpenKebabId] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const kebabRef = useRef(null);
-  const canManage = canManageUsers(currentUser);
+  const canManage = isAdminLike(currentUser);
 
   useEffect(() => {
     document.title = "Team-directory";

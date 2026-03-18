@@ -549,6 +549,43 @@ export const dashboard = {
   },
 };
 
+// API Credentials (Settings)
+export const apiCredentials = {
+  /** Get OpenAI settings (admin only). */
+  async getOpenAI() {
+    return apiFetch("/api/v1/api-credentials/openai");
+  },
+
+  /** Save OpenAI settings (admin only). */
+  async saveOpenAI(body) {
+    return apiFetch("/api/v1/api-credentials/openai", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async testOpenAIChat(body) {
+    return apiFetch("/api/v1/api-credentials/openai/test/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async testOpenAIEmbedding(body) {
+    return apiFetch("/api/v1/api-credentials/openai/test/embedding", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async testOpenAIOcr(body) {
+    return apiFetch("/api/v1/api-credentials/openai/test/ocr", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+};
+
 // Search — question embedding vs ChromaDB document embeddings
 export const search = {
   /**

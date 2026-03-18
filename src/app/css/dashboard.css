@@ -626,7 +626,7 @@
 }
 
 .dashboardMetricValue {
-  font-size: var(--text-h4);;
+  font-size: var(--text-h4);
   font-weight: var(--font-weight-semi-bold);
   color: var(--text);
   margin-top: 8px;
@@ -2155,165 +2155,6 @@
   text-align: right;
 }
 
-/* API Configuration — provider cards (single-select, corporate production UI) */
-.apiConfigSection {
-  margin-top: 28px;
-  max-width: 960px;
-}
-
-.apiConfigHint {
-  font-size: 14px;
-  color: var(--muted, #64748b);
-  margin: 0 0 20px 0;
-  line-height: 1.5;
-}
-
-.apiConfigCards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-}
-
-.apiConfigCard {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 24px;
-  cursor: pointer;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  position: relative;
-  outline: none;
-}
-
-.apiConfigCard:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-  background: #fafafa;
-}
-
-.apiConfigCardSelected {
-  border: 2px solid #0f766e;
-  background: #f0fdfa;
-  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.12);
-}
-
-.apiConfigCardSelected:hover {
-  border-color: #0f766e;
-  background: #ecfdfb;
-}
-
-.apiConfigCardInner {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  text-align: left;
-}
-
-.apiConfigCardHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.apiConfigCardTag {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
-  letter-spacing: 0.02em;
-}
-
-.apiConfigSelectedBadge {
-  display: inline-block;
-  align-self: flex-start;
-  margin-bottom: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #0f766e;
-  background: #ccfbf1;
-}
-
-.apiConfigRadioVisual {
-  width: 22px;
-  height: 22px;
-  border: 2px solid #cbd5e1;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
-}
-
-.apiConfigCardSelected .apiConfigRadioVisual {
-  border-color: #0f766e;
-  background: #0f766e;
-  color: #fff;
-}
-
-.apiConfigRadioVisualSelected {
-  border-color: #0f766e;
-  background: #0f766e;
-  color: #fff;
-}
-
-.apiConfigRadio {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
-  appearance: none;
-}
-
-.apiConfigCardTitle {
-  font-weight: var(--font-weight-heading);
-  font-size: var(--font-size-heading);
-  font-family: var(--font-family);
-  color: #1e293b;
-  margin: 0 0 4px 0;
-  line-height: 1.35;
-  letter-spacing: -0.01em;
-}
-
-.apiConfigCardSubtitle {
-  font-size: 13px;
-  color: #64748b;
-  margin: 0 0 10px 0;
-  line-height: 1.45;
-  font-style: normal;
-}
-
-.apiConfigCardDesc {
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.55;
-  margin: 0;
-}
-
-.apiConfigModal {
-  padding: 28px;
-  max-width: 440px;
-}
-
-.apiConfigForm {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
 /* Responsive — dashboard and shell */
 @media (max-width: 1200px) {
   .topCards {
@@ -2382,9 +2223,6 @@
     min-height: 280px;
   }
 
-  .apiConfigCards {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 480px) {

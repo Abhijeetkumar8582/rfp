@@ -389,7 +389,7 @@ export default function Dashboard() {
     });
 
     const LOW_BOUND = 100;
-    const HIGH_BOUND = 2000;
+    const HIGH_BOUND = 15000;
 
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
       // No real data: fixed neutral scale so all cells render in grey

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { isAdminLike, isViewer as isViewerRole } from "../../lib/rbac";
 import "../css/theme.css";
 import "../css/dashboard.css";
 
@@ -134,16 +135,6 @@ const ADMIN_ONLY_PATHS = ["/activitylog", "/accessintelligence", "/settings", "/
 
 const PROTECTED_PATHS = ["/dashboard", "/file-repository", "/search", "/upload-rfp", "/intelligence-hub", "/activitylog", "/accessintelligence", "/integration", "/settings", "/team-directory"];
 
-function canManageUsers(user) {
-  const role = (user?.role || "").toLowerCase();
-  return role === "admin" || role === "manager";
-}
-
-function isViewer(user) {
-  const role = (user?.role || "").toLowerCase();
-  return role === "viewer";
-}
-
 export default function AppShell({ children, mainClassName = "main" }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -153,21 +144,21 @@ export default function AppShell({ children, mainClassName = "main" }) {
   const settingsRef = useRef(null);
 
   const settingsNavItems = settingsNavItemsBase.filter(
-    (item) => !item.adminOnly || canManageUsers(user)
+    (item) => !item.adminOnly || isAdminLike(user)
   );
   const settingsDropdownItems = settingsDropdownItemsBase.filter(
-    (item) => !item.adminOnly || canManageUsers(user)
+    (item) => !item.adminOnly || isAdminLike(user)
   );
 
   const isProtected = PROTECTED_PATHS.some((p) => pathname === p || pathname?.startsWith(p + "/"));
   const isAdminOnlyPath = ADMIN_ONLY_PATHS.some((p) => pathname === p || pathname?.startsWith(p + "/"));
-  const isViewerOnDashboard = user && isViewer(user) && (pathname === "/dashboard" || pathname?.startsWith("/dashboard/"));
+  const isViewerOnDashboard = user && isViewerRole(user) && (pathname === "/dashboard" || pathname?.startsWith("/dashboard/"));
   const shouldRedirectToLogin = !loading && !user && isProtected;
-  const shouldRedirectToDashboard = !loading && user && isAdminOnlyPath && !canManageUsers(user);
+  const shouldRedirectToDashboard = !loading && user && isAdminOnlyPath && !isAdminLike(user);
   const shouldRedirectViewerFromDashboard = !loading && isViewerOnDashboard;
   const shouldRedirect = shouldRedirectToLogin || shouldRedirectToDashboard || shouldRedirectViewerFromDashboard;
 
-  const mainNavItemsFiltered = mainNavItems.filter((item) => !(item.href === "/dashboard" && isViewer(user)));
+  const mainNavItemsFiltered = mainNavItems.filter((item) => !(item.href === "/dashboard" && isViewerRole(user)));
 
   useEffect(() => {
     if (shouldRedirectToLogin) {
@@ -239,7 +230,7 @@ export default function AppShell({ children, mainClassName = "main" }) {
             </Link>
           ))}
 
-          {canManageUsers(user) && (
+          {isAdminLike(user) && (
             <div className={`navGroup ${sidebarCollapsed ? "navGroupCollapsed" : ""}`}>
               <div className="navGroupTitle">Settings</div>
               {settingsNavItems.map(({ href, label, icon: Icon }) => (

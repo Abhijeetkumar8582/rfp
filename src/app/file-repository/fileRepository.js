@@ -6,23 +6,23 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../../context/AuthContext";
 import { projects as projectsApi, documents as documentsApi, activity as activityApi, dashboard as dashboardApi, accessIntelligence as accessIntelligenceApi, API_BASE, getToken } from "../../lib/api";
+import { isAdminLike, normalizeRole } from "../../lib/rbac";
 import "../css/filerepository.css";
 
 /** True if current user can add files and train data (Super Admin or Admin). */
 function canManageFiles(user) {
-  const role = (user?.role || "").toLowerCase();
-  return role === "admin" || role === "manager";
+  return isAdminLike(user);
 }
 
 /** True if current user can see row actions (3-dots menu) and open file detail (chunks/meta). Admin, Super Admin, and Developer can; Viewer cannot. */
 function canSeeRowActions(user) {
-  const role = (user?.role || "").toLowerCase();
+  const role = normalizeRole(user?.role);
   return role === "admin" || role === "manager" || role === "analyst" || role === "developer";
 }
 
 /** True if current user is Developer (analyst). They get only Open/Download in kebab; Download only for Open for all. */
 function isDeveloperRole(user) {
-  const role = (user?.role || "").toLowerCase();
+  const role = normalizeRole(user?.role);
   return role === "analyst" || role === "developer";
 }
 
